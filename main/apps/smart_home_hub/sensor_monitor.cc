@@ -1,4 +1,5 @@
 #include "sensor_monitor.h"
+#include "sensor_math.h"
 #include "board.h"
 #include <esp_log.h>
 #include <esp_timer.h>
@@ -8,7 +9,6 @@
 // bmi270_api.h exposes the Bosch 8 KB configuration blob (bmi270_config_file)
 // that every BMI270 needs after power-up, plus the register map.
 #include <bmi270_api.h>
-#include <cmath>
 #include <cstring>
 
 #define TAG "SensorMonitor"
@@ -29,8 +29,6 @@ constexpr uint8_t kLtrRegMeasRate = 0x85;  // bits[5:3] repeat rate, bits[2:0] i
 constexpr uint8_t kLtrRegStatus = 0x8C;    // bit2 als_new_data, bit7 invalid, bits[6:4] gain
 constexpr uint8_t kLtrRegCh1L = 0x88;      // CH1 = infrared only
 constexpr uint8_t kLtrRegPsL = 0x8D;       // proximity data (11 bit)
-constexpr float kLtrGainCount[8] = {1.0f, 2.0f, 4.0f, 8.0f, 0.0f, 0.0f, 48.0f, 96.0f};
-constexpr uint16_t kLtrIntTimeMs[8] = {100, 50, 200, 400, 150, 250, 300, 350};
 
 // --- BMI270 (Bosch) ----------------------------------------------------------
 constexpr uint8_t kBmi270Addr = 0x69;
@@ -44,8 +42,6 @@ constexpr size_t kBmiChunkSize = 128;
 //   accel  -> +/-2 g     -> 16384 LSB/g
 //   gyroscope -> +/-2000 dps -> 16.4 LSB/dps
 constexpr uint8_t kBmiAccGyrConf = 0x28;
-constexpr float kBmiAccLsbPerG = 16384.0f;
-constexpr float kBmiGyrLsbPerDps = 16.4f;
 
 }  // namespace
 
@@ -149,19 +145,10 @@ bool SensorMonitor::ReadLtr553(LightSensorData& data) {
         return false;
     }
 
-    const float gain = kLtrGainCount[(status >> 4) & 0x07];
-    const float int_time = kLtrIntTimeMs[0] / 100.0f;  // integration time programmed above
-    const float ratio = static_cast<float>(ch1) / static_cast<float>(ch0 + ch1);
-    float lux = 0.0f;
-    if (ratio < 0.45f) {
-        lux = 1.7743f * ch0 + 1.1059f * ch1;
-    } else if (ratio < 0.64f) {
-        lux = 4.2785f * ch0 - 1.9548f * ch1;
-    } else if (ratio < 0.85f) {
-        lux = 0.5926f * ch0 + 0.1185f * ch1;
-    }
-    lux /= (gain * int_time);
-    data.lux = lux > 0.0f ? lux : 0.0f;
+    // Gain and integration time are whatever InitLtr553 programmed, not a
+    // default: the conversion is only correct for the settings in force.
+    data.lux = Ltr553Lux(ch0, ch1, kLtr553GainCount[(status >> 4) & 0x07],
+                        static_cast<float>(kLtr553IntTimeMs[0]));
 
     uint8_t ps[2] = {0};
     if (ReadRegs(ltr553_dev_, kLtrRegPsL, ps, sizeof(ps), 100)) {
@@ -266,27 +253,16 @@ bool SensorMonitor::ReadBmi270(MotionSensorData& data) {
     const int16_t raw_gy = static_cast<int16_t>(buf[8] | (buf[9] << 8));
     const int16_t raw_gz = static_cast<int16_t>(buf[10] | (buf[11] << 8));
 
-    data.accel_x = raw_ax / kBmiAccLsbPerG;
-    data.accel_y = raw_ay / kBmiAccLsbPerG;
-    data.accel_z = raw_az / kBmiAccLsbPerG;
-    data.gyro_x = raw_gx / kBmiGyrLsbPerDps;
-    data.gyro_y = raw_gy / kBmiGyrLsbPerDps;
-    data.gyro_z = raw_gz / kBmiGyrLsbPerDps;
+    data.accel_x = Bmi270AccelG(raw_ax);
+    data.accel_y = Bmi270AccelG(raw_ay);
+    data.accel_z = Bmi270AccelG(raw_az);
+    data.gyro_x = Bmi270GyroDps(raw_gx);
+    data.gyro_y = Bmi270GyroDps(raw_gy);
+    data.gyro_z = Bmi270GyroDps(raw_gz);
 
-    // Tilt away from the table plane, and which face is pointing down.
-    const float magnitude =
-        std::sqrt(data.accel_x * data.accel_x + data.accel_y * data.accel_y + data.accel_z * data.accel_z);
-    const float z = magnitude > 0.1f ? std::fabs(data.accel_z) / magnitude : 0.0f;
-    data.tilt_degrees = std::acos(z < 1.0f ? z : 1.0f) * 180.0f / 3.14159265f;
-
-    const float ax = std::fabs(data.accel_x);
-    const float ay = std::fabs(data.accel_y);
-    const float az = std::fabs(data.accel_z);
-    const char* face = (ay >= ax && ay >= az) ? (data.accel_y > 0 ? "mặt trước" : "mặt sau")
-                     : (ax >= az)            ? (data.accel_x > 0 ? "cạnh phải" : "cạnh trái")
-                                              : (data.accel_z > 0 ? "mặt lưng úp xuống"
-                                                                  : "mặt kính úp xuống");
-    data.posture = std::string(face) + " - nghiêng " + std::to_string(static_cast<int>(data.tilt_degrees)) + "°";
+    data.tilt_degrees = TiltDegrees(data.accel_x, data.accel_y, data.accel_z);
+    data.posture = std::string(PostureFace(data.accel_x, data.accel_y, data.accel_z)) +
+                   " - nghiêng " + std::to_string(static_cast<int>(data.tilt_degrees)) + "°";
     return true;
 }
 

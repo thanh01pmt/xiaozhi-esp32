@@ -22,18 +22,43 @@ Tài liệu này tổng hợp toàn bộ các lưu ý về thiết lập công c
 📁 `docs/setup/flash_cores3.sh`
 
 ```bash
-# Nạp và theo dõi monitor ngay lập tức (mặc định cổng /dev/cu.usbmodem2101)
+# Nạp firmware rồi tự kiểm tra cảm biến (mặc định cổng /dev/cu.usbmodem2101)
 ./docs/setup/flash_cores3.sh
 
 # Hoặc chỉ định rõ cổng USB và hành động:
-./docs/setup/flash_cores3.sh /dev/cu.usbmodem2101 all     # Build + Flash + Monitor
+./docs/setup/flash_cores3.sh /dev/cu.usbmodem2101 all     # Build + Flash + Verify
+./docs/setup/flash_cores3.sh /dev/cu.usbmodem2101 build   # Chỉ Build
 ./docs/setup/flash_cores3.sh /dev/cu.usbmodem2101 flash   # Chỉ Flash
+./docs/setup/flash_cores3.sh /dev/cu.usbmodem2101 verify  # Chỉ kiểm tra cảm biến (không cần build lại)
 ./docs/setup/flash_cores3.sh /dev/cu.usbmodem2101 monitor # Chỉ mở Monitor
 
 # Đổi ngôn ngữ (mặc định vi-VN)
 LANGUAGE=en-US ./docs/setup/flash_cores3.sh
+
+# Cho phép chờ lâu hơn khi máy khởi động chậm (mặc định 25 giây)
+VERIFY_TIMEOUT=60 ./docs/setup/flash_cores3.sh /dev/cu.usbmodem2101 verify
 ```
 *(Khi xem monitor, nhấn `Ctrl + ]` để thoát).*
+
+`all` **không** tự mở monitor vì monitor chạy ở chế độ tương tác và sẽ nuốt mất log mà bước verify cần đọc. Chạy `monitor` riêng nếu cần theo dõi thủ công.
+
+### Bước `verify` làm gì
+
+Sau khi nạp (hoặc khi chạy riêng), script dùng `esptool` đặt máy về chế độ chạy, mở cổng serial ở 115200 và dò dòng mà driver in ra:
+
+```
+==========================================================
+ Kết quả khởi tạo cảm biến
+----------------------------------------------------------
+ OK    PMIC (AXP2101)       : yes
+ OK    LTR-553ALS (light)   : yes
+ FAIL  BMI270 (imu)         : no
+----------------------------------------------------------
+  • SensorMonitor: BMI270 not found at 0x69
+==========================================================
+```
+
+Script trả về exit code khác 0 nếu bất kỳ cảm biến nào không lên, nên dùng được trong CI. Nếu không thấy dòng `SensorMonitor ready` trong `VERIFY_TIMEOUT` giây, script in ra 20 dòng log cuối để dò.
 
 Script build bằng lệnh này — ngôn ngữ là **tham số lúc build**, không phải option của board:
 
