@@ -16,6 +16,7 @@ Mọi quy ước về tạo, đặt tên và cấu trúc tài liệu tuân thủ
 - [Cấu hình mạng BluFi](./specs/blufi.md) — Đặc tả cấu hình Wi-Fi qua Bluetooth Low Energy.
 - [Hệ thống âm báo (Notify)](./specs/notify.md) — Cơ chế phát âm thông báo và cảnh báo trạng thái.
 - [Cơ chế Dynamic Glyph Push](./specs/glyph-push.md) — Đặc tả nạp font và glyph động cho màn hình.
+- [Hướng dẫn Cài Đặt Môi Trường & Khắc Phục Sự Cố](./setup/environment-troubleshooting-guide.md) — Cài đặt ESP-IDF v6.1, công cụ macOS, giải quyết xung đột thư viện và quy trình nạp nhanh.
 
 ### 2. Quyết Định Kiến Trúc (ADRs)
 
