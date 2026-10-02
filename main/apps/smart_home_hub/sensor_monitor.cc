@@ -5,7 +5,6 @@
 #include <esp_heap_caps.h>
 #include <esp_wifi.h>
 #include <esp_netif.h>
-#include <esp_clk.h>
 // bmi270_api.h exposes the Bosch 8 KB configuration blob (bmi270_config_file)
 // that every BMI270 needs after power-up, plus the register map.
 #include <bmi270_api.h>
@@ -31,7 +30,7 @@ constexpr uint8_t kLtrRegStatus = 0x8C;    // bit2 als_new_data, bit7 invalid, b
 constexpr uint8_t kLtrRegCh1L = 0x88;      // CH1 = infrared only
 constexpr uint8_t kLtrRegPsL = 0x8D;       // proximity data (11 bit)
 constexpr float kLtrGainCount[8] = {1.0f, 2.0f, 4.0f, 8.0f, 0.0f, 0.0f, 48.0f, 96.0f};
-constexpr uint8_t kLtrIntTimeMs[8] = {100, 50, 200, 400, 150, 250, 300, 350};
+constexpr uint16_t kLtrIntTimeMs[8] = {100, 50, 200, 400, 150, 250, 300, 350};
 
 // --- BMI270 (Bosch) ----------------------------------------------------------
 constexpr uint8_t kBmi270Addr = 0x69;
@@ -340,7 +339,9 @@ CoreS3SensorSnapshot SensorMonitor::GetSnapshot() {
     snapshot.system.free_psram_bytes = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
     snapshot.system.min_sram_bytes = heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL);
     snapshot.system.uptime_seconds = static_cast<uint32_t>(esp_timer_get_time() / 1000000ULL);
-    snapshot.system.cpu_freq_mhz = esp_clk_cpu_freq();
+    // CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ is the clock the firmware was built for;
+    // there is no esp_clk_cpu_freq() in this IDF.
+    snapshot.system.cpu_freq_mhz = CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ;
 
     return snapshot;
 }

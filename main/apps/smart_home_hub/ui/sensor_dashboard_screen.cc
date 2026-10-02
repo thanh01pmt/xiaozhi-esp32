@@ -8,6 +8,20 @@
 
 #define TAG "SH_SensorDash"
 
+// The mini-app is built for every board, but the large Montserrat faces are only
+// compiled in on boards that ask for them (see boards/m5stack/core-s3/config.json).
+// Undefined LV_FONT_*_N evaluates to 0 in #if, so this stays correct either way.
+#if LV_FONT_MONTSERRAT_28
+#define kFontBig lv_font_montserrat_28
+#else
+#define kFontBig LV_FONT_DEFAULT
+#endif
+#if LV_FONT_MONTSERRAT_20
+#define kFontMid lv_font_montserrat_20
+#else
+#define kFontMid LV_FONT_DEFAULT
+#endif
+
 // ---------------------------------------------------------------------------
 // Palette sampled from the reference "CoreS3 dashboard" look: near-black
 // canvas, dark slate cards, one neon accent per card.
@@ -25,7 +39,6 @@ constexpr uint32_t kBlue = 0x2E9BFF;
 constexpr uint32_t kPurple = 0xC24BFF;
 constexpr uint32_t kYellow = 0xFFC21A;
 constexpr uint32_t kOrange = 0xFF6B35;
-constexpr uint32_t kRed = 0xFF4D4D;
 
 constexpr int kMargin = 4;
 constexpr int kGap = 4;
@@ -40,8 +53,7 @@ constexpr int kHeadH = 52;
 constexpr int kRowA = 60;
 constexpr int kRowBH = 88;
 constexpr int kRowB = 152;
-
-const char* const kWeekday[] = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
+constexpr int kTallH = 236 - kRowA;  // IMU card spans both body rows
 
 lv_obj_t* MakeCard(lv_obj_t* parent, int x, int y, int w, int h, uint32_t accent) {
     lv_obj_t* card = lv_obj_create(parent);
@@ -67,7 +79,7 @@ lv_obj_t* MakeLabel(lv_obj_t* parent, int x, int y, const lv_font_t* font, uint3
     return label;
 }
 
-lv_obj_t* MakeRightLabel(lv_obj_t* parent, int x, int y, int right, const lv_font_t* font,
+lv_obj_t* MakeRightLabel(lv_obj_t* parent, int y, int right, const lv_font_t* font,
                          uint32_t color, const char* text) {
     lv_obj_t* label = MakeLabel(parent, 0, y, font, color, text);
     lv_obj_set_width(label, right);
@@ -164,58 +176,52 @@ void SensorDashboardScreen::CreateUI() {
     // ---------------------------------------------------------------- header
     lv_obj_t* head = MakeCard(screen_, kCol0, kRowHead, kWideW, kHeadH, kCyan);
     MakeLabel(head, 10, 5, &lv_font_montserrat_14, kCyan, "M5STACK");
-    MakeLabel(head, 10, 18, &lv_font_montserrat_20, kText, "CORE S3");
+    MakeLabel(head, 10, 18, kFontMid, kText, "CORE S3");
     lv_obj_t* vline = lv_obj_create(head);
     lv_obj_remove_style_all(vline);
     lv_obj_set_pos(vline, 100, 10);
     lv_obj_set_size(vline, 1, kHeadH - 20);
     lv_obj_set_style_bg_color(vline, lv_color_hex(0x2A3B47), 0);
     lv_obj_set_style_bg_opa(vline, LV_OPA_COVER, 0);
-    date_label_ = MakeLabel(head, 110, 7, &lv_font_montserrat_14, kDim, "--/--/--");
-    clock_label_ = MakeLabel(head, 110, 22, &lv_font_montserrat_20, kText, "--:--");
+    date_label_ = MakeLabel(head, 106, 7, &lv_font_montserrat_14, kDim, "--/--/--");
+    clock_label_ = MakeLabel(head, 106, 22, kFontMid, kText, "--:--");
 
     // --------------------------------------------------------------- battery
     lv_obj_t* bat = MakeCard(screen_, kCol2, kRowHead, kCardW, kHeadH, kGreen);
     MakeLabel(bat, 8, 5, &lv_font_montserrat_14, kGreen, "BAT");
-    bat_state_ = MakeRightLabel(bat, 0, 5, kCardW - 8, &lv_font_montserrat_14, kDim, "--");
-    bat_value_ = MakeLabel(bat, 8, 21, &lv_font_montserrat_20, kText, "--%");
+    bat_state_ = MakeRightLabel(bat, 5, kCardW - 8, &lv_font_montserrat_14, kDim, "--");
+    bat_value_ = MakeLabel(bat, 8, 21, kFontMid, kText, "--%");
     bat_bar_ = MakeBar(bat, 8, kHeadH - 10, kCardW - 16, 5, kGreen);
 
     // ------------------------------------------------------------ temperature
     lv_obj_t* temp = MakeCard(screen_, kCol0, kRowA, kCardW, kRowBH, kOrange);
     MakeLabel(temp, 8, 5, &lv_font_montserrat_14, kOrange, "TEMP");
-    temp_value_ = MakeLabel(temp, 8, 20, &lv_font_montserrat_28, kText, "--.-");
-    MakeRightLabel(temp, 0, 34, kCardW - 8, &lv_font_montserrat_14, kDim, "C");
-    temp_bar_ = MakeBar(temp, 8, kRowBH - 14, kCardW - 16, 6, kOrange);
+    temp_value_ = MakeLabel(temp, 8, 20, kFontBig, kText, "--.-");
+    MakeRightLabel(temp, 34, kCardW - 8, &lv_font_montserrat_14, kDim, "C");
+    temp_bar_ = MakeBar(temp, 8, kRowBH - 26, kCardW - 16, 6, kOrange);
 
     // ------------------------------------------------------------------ IMU
-    lv_obj_t* imu = MakeCard(screen_, kCol1, kRowA, kCardW, kRowB - kRowA, kGreen);
-    MakeLabel(imu, 8, 5, &lv_font_montserrat_20, kGreen, "IMU");
+    lv_obj_t* imu = MakeCard(screen_, kCol1, kRowA, kCardW, kTallH, kGreen);
+    MakeLabel(imu, 8, 5, kFontMid, kGreen, "IMU");
     MakeLabel(imu, 46, 9, &lv_font_montserrat_14, kDim, "ACC (g)");
-    acc_value_ = MakeLabel(imu, 8, 33, &lv_font_montserrat_14, kText, "X  --.--\nY  --.--\nZ  --.--");
+    acc_value_ = MakeLabel(imu, 8, 32, &lv_font_montserrat_14, kText, "X  --.--\nY  --.--\nZ  --.--");
     lv_obj_t* hline1 = lv_obj_create(imu);
     lv_obj_remove_style_all(hline1);
-    lv_obj_set_pos(hline1, 8, 88);
+    lv_obj_set_pos(hline1, 8, 86);
     lv_obj_set_size(hline1, kCardW - 16, 1);
     lv_obj_set_style_bg_color(hline1, lv_color_hex(0x2A3B47), 0);
     lv_obj_set_style_bg_opa(hline1, LV_OPA_COVER, 0);
-    MakeLabel(imu, 8, 94, &lv_font_montserrat_14, kDim, "GYR (d/s)");
-    gyr_value_ = MakeLabel(imu, 8, 112, &lv_font_montserrat_14, kText, "X  --.--\nY  --.--\nZ  --.--");
-    lv_obj_t* hline2 = lv_obj_create(imu);
-    lv_obj_remove_style_all(hline2);
-    lv_obj_set_pos(hline2, 8, 166);
-    lv_obj_set_size(hline2, kCardW - 16, 1);
-    lv_obj_set_style_bg_color(hline2, lv_color_hex(0x2A3B47), 0);
-    lv_obj_set_style_bg_opa(hline2, LV_OPA_COVER, 0);
-    posture_tilt_ = MakeLabel(imu, 8, 170, &lv_font_montserrat_14, kPurple, "--");
+    MakeLabel(imu, 8, 90, &lv_font_montserrat_14, kDim, "GYR (d/s)");
+    gyr_value_ = MakeLabel(imu, 8, 108, &lv_font_montserrat_14, kText, "X  --.--\nY  --.--\nZ  --.--");
+    posture_tilt_ = MakeLabel(imu, 8, 162, &lv_font_montserrat_14, kPurple, "--");
 
     // ----------------------------------------------------------------- light
     lv_obj_t* light = MakeCard(screen_, kCol2, kRowA, kCardW, kRowBH, kYellow);
     MakeLabel(light, 8, 5, &lv_font_montserrat_14, kYellow, "LIGHT");
-    light_value_ = MakeLabel(light, 8, 20, &lv_font_montserrat_28, kText, "--");
-    MakeRightLabel(light, 0, 34, kCardW - 8, &lv_font_montserrat_14, kYellow, "lux");
-    light_bar_ = MakeBar(light, 8, kRowBH - 26, kCardW - 16, 6, kYellow);
-    prox_label_ = MakeLabel(light, 8, kRowBH - 16, &lv_font_montserrat_14, kDim, "PROX --");
+    light_value_ = MakeLabel(light, 8, 20, kFontBig, kText, "--");
+    MakeRightLabel(light, 34, kCardW - 8, &lv_font_montserrat_14, kYellow, "lux");
+    light_bar_ = MakeBar(light, 8, kRowBH - 30, kCardW - 16, 6, kYellow);
+    prox_label_ = MakeLabel(light, 8, kRowBH - 20, &lv_font_montserrat_14, kDim, "PROX --");
 
     // ----------------------------------------------------------------- Wi-Fi
     lv_obj_t* wifi = MakeCard(screen_, kCol0, kRowB, kCardW, kRowBH, kBlue);
@@ -223,7 +229,7 @@ void SensorDashboardScreen::CreateUI() {
     wifi_ssid_ = MakeLabel(wifi, 8, 22, &lv_font_montserrat_14, kText, "--");
     lv_obj_set_width(wifi_ssid_, kCardW - 16);
     lv_obj_set_style_text_align(wifi_ssid_, LV_TEXT_ALIGN_LEFT, 0);
-    lv_label_set_long_mode(wifi_ssid_, LV_LABEL_LONG_MODE_DOT);
+    lv_label_set_long_mode(wifi_ssid_, LV_LABEL_LONG_MODE_CLIP);
     wifi_rssi_ = MakeLabel(wifi, 8, 42, &lv_font_montserrat_14, kDim, "-- dBm");
     for (int i = 0; i < 4; i++) {
         lv_obj_t* bar = lv_obj_create(wifi);
@@ -240,13 +246,13 @@ void SensorDashboardScreen::CreateUI() {
     lv_obj_t* sys = MakeCard(screen_, kCol2, kRowB, kCardW, kRowBH, kCyan);
     MakeLabel(sys, 8, 5, &lv_font_montserrat_14, kCyan, "SYSTEM");
     MakeLabel(sys, 8, 24, &lv_font_montserrat_14, kDim, "SRAM");
-    lv_obj_t* sram_bar = MakeBar(sys, 8, 40, kCardW - 16, 5, kBlue);
-    lv_obj_t* psram_bar = MakeBar(sys, 8, 62, kCardW - 16, 5, kPurple);
+    sys_sram_bar_ = MakeBar(sys, 8, 40, kCardW - 16, 5, kBlue);
+    sys_psram_bar_ = MakeBar(sys, 8, 62, kCardW - 16, 5, kPurple);
     MakeLabel(sys, 8, 46, &lv_font_montserrat_14, kDim, "PSRAM");
-    sys_sram_ = MakeRightLabel(sys, 0, 24, kCardW - 8, &lv_font_montserrat_14, kText, "--");
-    sys_psram_ = MakeRightLabel(sys, 0, 46, kCardW - 8, &lv_font_montserrat_14, kText, "--");
-    sys_cpu_ = MakeLabel(sys, 8, kRowBH - 16, &lv_font_montserrat_14, kDim, "CPU -- MHz");
-    uptime_value_ = MakeRightLabel(sys, 0, kRowBH - 16, kCardW - 8, &lv_font_montserrat_14, kGreen, "--");
+    sys_sram_ = MakeRightLabel(sys, 24, kCardW - 8, &lv_font_montserrat_14, kText, "--");
+    sys_psram_ = MakeRightLabel(sys, 46, kCardW - 8, &lv_font_montserrat_14, kText, "--");
+    sys_cpu_ = MakeLabel(sys, 8, kRowBH - 18, &lv_font_montserrat_14, kDim, "CPU -- MHz");
+    uptime_value_ = MakeRightLabel(sys, kRowBH - 18, kCardW - 8, &lv_font_montserrat_14, kGreen, "--");
 
     // Touch anywhere to go back to the XiaoZhi main screen.
     lv_obj_add_flag(screen_, LV_OBJ_FLAG_CLICKABLE);
@@ -275,7 +281,6 @@ void SensorDashboardScreen::UpdateTelemetry() {
     psram_pct = psram_pct < 0 ? 0 : (psram_pct > 100 ? 100 : psram_pct);
 
     const uint32_t seconds = s.system.uptime_seconds;
-    char text[64];
 
     if (lvgl_port_lock(200)) {
         // --- header clock ------------------------------------------------
@@ -285,11 +290,11 @@ void SensorDashboardScreen::UpdateTelemetry() {
             localtime_r(&now, &tmv);
             lv_label_set_text_fmt(date_label_, "%04d-%02d-%02d", tmv.tm_year + 1900, tmv.tm_mon + 1,
                                  tmv.tm_mday);
-            lv_label_set_text(clock_label_, kWeekday[tmv.tm_wday % 7]);
             lv_label_set_text_fmt(clock_label_, "%02d:%02d", tmv.tm_hour, tmv.tm_min);
         } else {
             lv_label_set_text(date_label_, "NO SYNC");
-            lv_label_set_text_fmt(clock_label_, "+%02lu:%02lu", seconds / 3600, (seconds / 60) % 60);
+            lv_label_set_text_fmt(clock_label_, "+%02lu:%02lu", static_cast<unsigned long>(seconds / 3600),
+                                 static_cast<unsigned long>((seconds / 60) % 60));
         }
 
         // --- battery ----------------------------------------------------
@@ -342,10 +347,12 @@ void SensorDashboardScreen::UpdateTelemetry() {
         lv_label_set_text_fmt(sys_psram_, "%luM",
                               static_cast<unsigned long>(s.system.free_psram_bytes / (1024 * 1024)));
         lv_label_set_text_fmt(sys_cpu_, "CPU %luMHz", static_cast<unsigned long>(s.system.cpu_freq_mhz));
-        snprintf(text, sizeof(text), "%02lu:%02lu", seconds / 3600, (seconds / 60) % 60);
+        char text[16];
+        snprintf(text, sizeof(text), "%02lu:%02lu", static_cast<unsigned long>(seconds / 3600),
+                 static_cast<unsigned long>((seconds / 60) % 60));
         lv_label_set_text(uptime_value_, text);
-        lv_bar_set_value(static_cast<lv_obj_t*>(lv_obj_get_parent(sys_sram_)), sram_pct, LV_ANIM_OFF);
-        lv_bar_set_value(static_cast<lv_obj_t*>(lv_obj_get_parent(sys_psram_)), psram_pct, LV_ANIM_OFF);
+        lv_bar_set_value(sys_sram_bar_, sram_pct, LV_ANIM_OFF);
+        lv_bar_set_value(sys_psram_bar_, psram_pct, LV_ANIM_OFF);
 
         lvgl_port_unlock();
     }

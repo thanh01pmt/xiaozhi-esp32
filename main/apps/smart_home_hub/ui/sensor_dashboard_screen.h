@@ -49,6 +49,8 @@ private:
     lv_obj_t* wifi_bars_[4] = {nullptr, nullptr, nullptr, nullptr};
     lv_obj_t* sys_sram_ = nullptr;
     lv_obj_t* sys_psram_ = nullptr;
+    lv_obj_t* sys_sram_bar_ = nullptr;
+    lv_obj_t* sys_psram_bar_ = nullptr;
     lv_obj_t* sys_cpu_ = nullptr;
     lv_obj_t* uptime_value_ = nullptr;
 
