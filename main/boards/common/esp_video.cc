@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <cstdio>
 #include <cstring>
+#include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
 #include "esp_imgfx_color_convert.h"

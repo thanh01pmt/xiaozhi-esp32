@@ -11,13 +11,15 @@
 // The mini-app is built for every board, but the large Montserrat faces are only
 // compiled in on boards that ask for them (see boards/m5stack/core-s3/config.json).
 // Undefined LV_FONT_*_N evaluates to 0 in #if, so this stays correct either way.
+// LV_FONT_DECLARE gives a variable in LVGL 9, hence the &: LV_FONT_DEFAULT is
+// already a pointer, so both branches end up as const lv_font_t*.
 #if LV_FONT_MONTSERRAT_28
-#define kFontBig lv_font_montserrat_28
+#define kFontBig (&lv_font_montserrat_28)
 #else
 #define kFontBig LV_FONT_DEFAULT
 #endif
 #if LV_FONT_MONTSERRAT_20
-#define kFontMid lv_font_montserrat_20
+#define kFontMid (&lv_font_montserrat_20)
 #else
 #define kFontMid LV_FONT_DEFAULT
 #endif
