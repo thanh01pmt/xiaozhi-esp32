@@ -1,4 +1,5 @@
 #include "dashboard_screen.h"
+#include "application.h"
 #include <esp_log.h>
 #include <esp_lvgl_port.h>
 
@@ -16,8 +17,13 @@ DashboardScreen::~DashboardScreen() {
 void DashboardScreen::OnAutoReturnTimeout(void* arg) {
     auto self = static_cast<DashboardScreen*>(arg);
     if (self && self->IsVisible()) {
-        ESP_LOGI(TAG, "Auto-return to XiaoZhi main screen");
-        self->Hide();
+        // Hide() takes the LVGL lock; the shared esp_timer task must not block on it.
+        Application::GetInstance().Schedule([self]() {
+            if (self->IsVisible()) {
+                ESP_LOGI(TAG, "Auto-return to XiaoZhi main screen");
+                self->Hide();
+            }
+        });
     }
 }
 
@@ -87,9 +93,12 @@ void DashboardScreen::CreateUI() {
 
 void DashboardScreen::Show() {
     if (home_screen_ == nullptr) return;
-    if (lvgl_port_lock(100)) {
+    if (lvgl_port_lock(200)) {
         main_screen_ = lv_screen_active();
-        lv_screen_load_anim(home_screen_, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
+        // Synchronous load: an animated load keeps the previous screen active for
+        // the whole transition, so the next screen would remember the wrong
+        // "main" screen and never come back here.
+        lv_screen_load(home_screen_);
         is_visible_ = true;
         ResetAutoReturnTimer();
         lvgl_port_unlock();
@@ -98,14 +107,16 @@ void DashboardScreen::Show() {
 
 void DashboardScreen::Hide() {
     if (!is_visible_ || main_screen_ == nullptr) return;
-    if (lvgl_port_lock(100)) {
-        lv_screen_load_anim(main_screen_, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
-        is_visible_ = false;
-        if (auto_return_timer_ != nullptr) {
-            esp_timer_stop(auto_return_timer_);
-        }
+    if (auto_return_timer_ != nullptr) {
+        esp_timer_stop(auto_return_timer_);
+    }
+    if (lvgl_port_lock(200)) {
+        lv_screen_load(main_screen_);
         lvgl_port_unlock();
     }
+    // Cleared unconditionally: a timed-out lock must not leave the screen stuck
+    // "visible" and block every later switch back to main.
+    is_visible_ = false;
 }
 
 void DashboardScreen::ResetAutoReturnTimer() {

@@ -1,5 +1,6 @@
 #include "sensor_dashboard_screen.h"
 #include "../sensor_monitor.h"
+#include "application.h"
 #include <esp_log.h>
 #include <esp_lvgl_port.h>
 
@@ -28,8 +29,13 @@ void SensorDashboardScreen::OnUpdateTimer(void* arg) {
 void SensorDashboardScreen::OnAutoReturnTimeout(void* arg) {
     auto self = static_cast<SensorDashboardScreen*>(arg);
     if (self && self->IsVisible()) {
-        ESP_LOGI(TAG, "Sensor dashboard auto-return to main screen");
-        self->Hide();
+        // Hide() takes the LVGL lock; the shared esp_timer task must not block on it.
+        Application::GetInstance().Schedule([self]() {
+            if (self->IsVisible()) {
+                ESP_LOGI(TAG, "Sensor dashboard auto-return to main screen");
+                self->Hide();
+            }
+        });
     }
 }
 
@@ -210,9 +216,10 @@ void SensorDashboardScreen::UpdateTelemetry() {
 void SensorDashboardScreen::Show() {
     if (screen_ == nullptr) return;
     ESP_LOGI(TAG, "Showing Sensor Dashboard screen");
-    if (lvgl_port_lock(100)) {
+    if (lvgl_port_lock(200)) {
         main_screen_ = lv_screen_active();
-        lv_screen_load_anim(screen_, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
+        // Synchronous load, see DashboardScreen::Show().
+        lv_screen_load(screen_);
         visible_ = true;
         lvgl_port_unlock();
     }
@@ -237,9 +244,10 @@ void SensorDashboardScreen::Hide() {
         esp_timer_stop(auto_return_timer_);
     }
 
-    if (lvgl_port_lock(100)) {
-        lv_screen_load_anim(main_screen_, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
-        visible_ = false;
+    if (lvgl_port_lock(200)) {
+        lv_screen_load(main_screen_);
         lvgl_port_unlock();
     }
+    // Cleared unconditionally, see DashboardScreen::Hide().
+    visible_ = false;
 }

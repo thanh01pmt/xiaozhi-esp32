@@ -5,6 +5,8 @@
 #include <esp_log.h>
 #include <esp_lvgl_port.h>
 #include <esp_heap_caps.h>
+#include <ctime>
+#include <cstdio>
 #include <cstring>
 
 #define TAG "CameraPreview"
@@ -28,10 +30,17 @@ CameraPreviewScreen::~CameraPreviewScreen() {
 
 void CameraPreviewScreen::OnAutoExitTimeout(void* arg) {
     auto self = static_cast<CameraPreviewScreen*>(arg);
-    if (self && self->IsVisible()) {
-        ESP_LOGI(TAG, "Camera preview timeout -> returning to main screen");
-        self->Hide();
+    if (!self || !self->IsVisible()) {
+        return;
     }
+    // Hide() stops the stream and takes the LVGL lock, neither of which is safe
+    // on the shared esp_timer task.
+    Application::GetInstance().Schedule([self]() {
+        if (self->IsVisible()) {
+            ESP_LOGI(TAG, "Camera preview timeout -> returning to main screen");
+            self->Hide();
+        }
+    });
 }
 
 void CameraPreviewScreen::Initialize(lv_display_t* display) {
@@ -65,9 +74,11 @@ void CameraPreviewScreen::Initialize(lv_display_t* display) {
     };
     esp_timer_create(&timer_args, &auto_exit_timer_);
 
-    if (lvgl_port_lock(100)) {
+    if (lvgl_port_lock(200)) {
         CreateUI();
         lvgl_port_unlock();
+    } else {
+        ESP_LOGE(TAG, "LVGL busy: camera preview UI not created");
     }
 }
 
@@ -99,7 +110,7 @@ void CameraPreviewScreen::CreateUI() {
     lv_obj_set_style_text_color(status_label_, lv_color_hex(0x00E5FF), 0);
     lv_obj_align(status_label_, LV_ALIGN_LEFT_MID, 8, 0);
 
-    // Bottom Control Bar
+    // Bottom Control Bar - also carries the capture timestamp once frozen
     lv_obj_t* bottom_bar = lv_obj_create(screen_);
     lv_obj_set_size(bottom_bar, 320, 36);
     lv_obj_align(bottom_bar, LV_ALIGN_BOTTOM_MID, 0, 0);
@@ -114,30 +125,26 @@ void CameraPreviewScreen::CreateUI() {
     lv_obj_set_style_text_color(hint_label_, lv_color_hex(0xFFFFFF), 0);
     lv_obj_align(hint_label_, LV_ALIGN_CENTER, 0, 0);
 
-    // Click on screen triggers Capture & AI explain
-    lv_obj_add_event_cb(screen_, [](lv_event_t* e) {
-        auto self = static_cast<CameraPreviewScreen*>(lv_event_get_user_data(e));
-        if (self && !self->capture_in_progress_) {
-            ESP_LOGI(TAG, "Screen clicked -> scheduling capture (stop stream first)");
+    // Click on screen triggers a still capture, shown full screen with a timestamp
+    lv_obj_add_event_cb(
+        screen_,
+        [](lv_event_t* e) {
+            auto self = static_cast<CameraPreviewScreen*>(lv_event_get_user_data(e));
+            if (!self) {
+                return;
+            }
+            bool expected = false;
+            if (!self->capture_in_progress_.compare_exchange_strong(expected, true)) {
+                return; // capture already running
+            }
             self->ResetAutoExitTimer();
-            // Must schedule off the LVGL task to avoid deadlock:
-            // StreamTask holds V4L2 buffer + needs lvgl_port_lock,
-            // Capture() needs V4L2 buffer + we're inside LVGL lock here.
-            self->capture_in_progress_ = true;
+            // Capture() and the LVGL lock both block, so leave the LVGL task.
             Application::GetInstance().Schedule([self]() {
-                self->StopLiveStream();
-                auto camera = Board::GetInstance().GetCamera();
-                if (camera != nullptr) {
-                    camera->Capture();
-                }
-                // Restart live stream after capture completes
-                if (self->visible_) {
-                    self->StartLiveStream();
-                }
+                self->FreezeCapturedPhoto();
                 self->capture_in_progress_ = false;
             });
-        }
-    }, LV_EVENT_CLICKED, this);
+        },
+        LV_EVENT_CLICKED, this);
 }
 
 void CameraPreviewScreen::ResetAutoExitTimer() {
@@ -151,10 +158,17 @@ void CameraPreviewScreen::Show() {
     if (screen_ == nullptr) return;
     ESP_LOGI(TAG, "Show Camera Live Preview");
 
-    if (lvgl_port_lock(100)) {
+    if (lvgl_port_lock(200)) {
+        main_screen_ = lv_screen_active();
+        if (main_screen_ == screen_) {
+            main_screen_ = lv_display_get_screen_prev(display_);
+        }
         lv_screen_load(screen_);
         visible_ = true;
         lvgl_port_unlock();
+    } else {
+        ESP_LOGW(TAG, "LVGL busy, camera preview not shown");
+        return;
     }
     ResetAutoExitTimer();
     StartLiveStream();
@@ -169,43 +183,102 @@ void CameraPreviewScreen::Hide() {
         esp_timer_stop(auto_exit_timer_);
     }
 
-    if (lvgl_port_lock(100)) {
-        auto main_screen = lv_display_get_screen_active(display_);
-        if (main_screen != nullptr && main_screen != screen_) {
-            lv_screen_load(main_screen);
-        } else {
-            lv_screen_load(lv_display_get_screen_prev(display_));
+    if (lvgl_port_lock(200)) {
+        lv_obj_t* target = (main_screen_ != nullptr && main_screen_ != screen_)
+                               ? main_screen_
+                               : lv_display_get_screen_prev(display_);
+        if (target != nullptr && target != screen_) {
+            lv_screen_load(target);
         }
-        visible_ = false;
         lvgl_port_unlock();
+    } else {
+        ESP_LOGW(TAG, "LVGL busy, camera screen left loaded");
     }
+    // Never leave a stale visible flag behind: a timed-out lock must not wedge
+    // every later screen switch.
+    visible_ = false;
 }
 
 void CameraPreviewScreen::StartLiveStream() {
-    if (task_running_) return;
+    if (!visible_ || task_running_ || preview_task_handle_ != nullptr) return;
     task_running_ = true;
-
-    xTaskCreatePinnedToCore(&CameraPreviewScreen::StreamTask,
-                            "cam_preview_task",
-                            4096,
-                            this,
-                            5, // Medium priority
-                            &preview_task_handle_,
-                            1); // Run on core 1
+    if (xTaskCreatePinnedToCore(&CameraPreviewScreen::StreamTask, "cam_preview_task", 4096, this, 5,
+                                &preview_task_handle_, 1) != pdPASS) {
+        task_running_ = false;
+        preview_task_handle_ = nullptr;
+        ESP_LOGE(TAG, "Failed to start camera preview task");
+    }
 }
 
 void CameraPreviewScreen::StopLiveStream() {
-    if (!task_running_) return;
     task_running_ = false;
+    if (preview_task_handle_ == nullptr) return;
 
+    for (int i = 0; i < 100 && preview_task_handle_ != nullptr; i++) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
     if (preview_task_handle_ != nullptr) {
-        // Wait up to 300ms for clean thread exit
-        int count = 0;
-        while (preview_task_handle_ != nullptr && count++ < 30) {
-            vTaskDelay(pdMS_TO_TICKS(10));
-        }
+        ESP_LOGW(TAG, "Preview task stuck, deleting it");
+        vTaskDelete(preview_task_handle_);
         preview_task_handle_ = nullptr;
     }
+}
+
+void CameraPreviewScreen::FreezeCapturedPhoto() {
+    if (!visible_ || preview_rgb_buffer_ == nullptr) return;
+    TakeStillFrame("PHOTO | GC0308");
+}
+
+void CameraPreviewScreen::OnExternalPhotoCaptured() {
+    if (!visible_ || preview_rgb_buffer_ == nullptr) return;
+    StopLiveStream();
+    TakeStillFrame("PHOTO | GC0308");
+}
+
+void CameraPreviewScreen::TakeStillFrame(const char* caption_prefix) {
+    StopLiveStream();
+
+    char stamp[64] = {0};
+    time_t now = time(nullptr);
+    struct tm tmv;
+    localtime_r(&now, &tmv);
+
+    uint16_t w = 0, h = 0;
+    auto camera = Board::GetInstance().GetCamera();
+    bool grabbed = camera != nullptr &&
+                   camera->CapturePreviewFrame(preview_rgb_buffer_, FRAME_BUFFER_SIZE, w, h);
+
+    if (lvgl_port_lock(200)) {
+        if (status_label_ != nullptr) {
+            if (grabbed) {
+                lv_label_set_text_fmt(status_label_, "%s", caption_prefix);
+                lv_obj_set_style_text_color(status_label_, lv_color_hex(0xFFB300), 0);
+            } else {
+                lv_label_set_text(status_label_, "CAMERA UNAVAILABLE");
+                lv_obj_set_style_text_color(status_label_, lv_color_hex(0xFF5252), 0);
+            }
+        }
+        if (hint_label_ != nullptr) {
+            if (grabbed) {
+                snprintf(stamp, sizeof(stamp), "Chụp lúc %02d/%02d/%04d  %02d:%02d:%02d", tmv.tm_mday,
+                         tmv.tm_mon + 1, tmv.tm_year + 1900, tmv.tm_hour, tmv.tm_min, tmv.tm_sec);
+                lv_label_set_text(hint_label_, stamp);
+                lv_obj_set_style_text_color(hint_label_, lv_color_hex(0xFFB300), 0);
+            } else {
+                lv_label_set_text(hint_label_, "Không lấy được khung hình từ camera");
+                lv_obj_set_style_text_color(hint_label_, lv_color_hex(0xFF5252), 0);
+            }
+        }
+        if (img_obj_ != nullptr) {
+            lv_obj_invalidate(img_obj_);
+        }
+        lvgl_port_unlock();
+    } else {
+        ESP_LOGW(TAG, "LVGL busy, could not refresh the captured photo");
+    }
+
+    // Stay on the frozen frame; the live stream only resumes after Hide()/Show().
+    ResetAutoExitTimer();
 }
 
 void CameraPreviewScreen::StreamTask(void* arg) {
@@ -230,6 +303,7 @@ void CameraPreviewScreen::StreamTask(void* arg) {
                     if (lvgl_port_lock(50)) {
                         if (self->status_label_ != nullptr) {
                             lv_label_set_text_fmt(self->status_label_, "LIVE PREVIEW | %.1f FPS", fps);
+                            lv_obj_set_style_text_color(self->status_label_, lv_color_hex(0x00E5FF), 0);
                         }
                         lvgl_port_unlock();
                     }

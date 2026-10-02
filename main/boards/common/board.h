@@ -73,6 +73,9 @@ public:
     virtual bool GetTemperature(float& esp32temp);
     virtual Display* GetDisplay();
     virtual Camera* GetCamera();
+    // Called right after a still photo is captured so a board that owns a
+    // full-screen camera view can freeze it (default: no full-screen view).
+    virtual void OnPhotoCaptured() {}
     virtual NetworkInterface* GetNetwork() = 0;
     virtual void StartNetwork() = 0;
     virtual void SetNetworkEventCallback(NetworkEventCallback callback) { (void)callback; }

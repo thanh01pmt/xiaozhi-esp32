@@ -440,6 +440,13 @@ public:
         return camera_;
     }
 
+    // Keep the on-screen camera view showing the photo that was just taken.
+    virtual void OnPhotoCaptured() override {
+#if CONFIG_ENABLE_SMART_HOME_HUB
+        SmartHomeHub::GetInstance().GetCameraPreview().OnExternalPhotoCaptured();
+#endif
+    }
+
     virtual bool GetBatteryLevel(int &level, bool& charging, bool& discharging) override {
         static bool last_discharging = false;
         charging = pmic_->IsCharging();

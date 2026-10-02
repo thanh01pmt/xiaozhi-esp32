@@ -18,10 +18,13 @@ public:
     void Hide();
     bool IsVisible() const { return visible_; }
 
-    // Public so MCP tools can pause/resume stream around Capture() calls
-    // to avoid V4L2 single-buffer deadlock on DVP cameras (GC0308).
-    void StopLiveStream();
-    void StartLiveStream();
+    // Freeze the live feed into a still frame and caption it with the capture
+    // timestamp. Safe to call when the screen is not visible (no-op).
+    void FreezeCapturedPhoto();
+
+    // Called by Board::OnPhotoCaptured() when a still was captured elsewhere
+    // (e.g. the self.camera.take_photo MCP tool) while this screen is open.
+    void OnExternalPhotoCaptured();
 
 private:
     lv_display_t* display_ = nullptr;
@@ -38,9 +41,15 @@ private:
     std::atomic<bool> capture_in_progress_{false};
     TaskHandle_t preview_task_handle_ = nullptr;
     esp_timer_handle_t auto_exit_timer_ = nullptr;
+    // Screen that was active before this one; LVGL's screen list order is not
+    // display order, so it must be remembered explicitly to get back to XiaoZhi.
+    lv_obj_t* main_screen_ = nullptr;
 
     void CreateUI();
     void ResetAutoExitTimer();
+    void StopLiveStream();
+    void StartLiveStream();
+    void TakeStillFrame(const char* caption_prefix);
 
     static void StreamTask(void* arg);
     static void OnAutoExitTimeout(void* arg);

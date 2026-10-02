@@ -8,6 +8,7 @@
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
+#include <freertos/semphr.h>
 
 #include "camera.h"
 #include "esp_video_init.h"
@@ -42,6 +43,11 @@ private:
     std::string explain_url_;
     std::string explain_token_;
     std::thread encoder_thread_;
+    // Serializes every V4L2 DQBUF/QBUF transaction. DVP controllers expose a
+    // single capture buffer, so a live-preview task and a still Capture() running
+    // concurrently corrupt the driver's buffer accounting and crash the device.
+    SemaphoreHandle_t frame_mutex_ = nullptr;
+    bool CaptureImpl();
 
 public:
     EspVideo(const esp_video_init_config_t& config);
@@ -50,7 +56,6 @@ public:
     virtual void SetExplainUrl(const std::string& url, const std::string& token);
     virtual bool Capture();
     virtual bool CapturePreviewFrame(uint8_t* rgb565_dest, size_t dest_size, uint16_t& out_w, uint16_t& out_h) override;
-    // 翻转控制函数
     virtual bool SetHMirror(bool enabled) override;
     virtual bool SetVFlip(bool enabled) override;
     virtual std::expected<std::string, std::string> Explain(const std::string& question) override;

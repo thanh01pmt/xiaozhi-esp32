@@ -4,6 +4,8 @@
 #include <string>
 #include <cJSON.h>
 #include "axp2101.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 struct PowerSensorData {
     int battery_level = 0;       // %
@@ -30,7 +32,7 @@ struct SystemSensorData {
 struct LightSensorData {
     bool available = false;
     float lux = 0.0f;           // Cuong do anh sang (Lux)
-    uint16_t proximity = 0;     // Cam bien tiem can (khoang cach vat the)
+    uint16_t proximity = 0;     // Cam bien tiem can (11-bit raw)
 };
 
 struct MotionSensorData {
@@ -41,7 +43,8 @@ struct MotionSensorData {
     float gyro_x = 0.0f;        // Con quay hoi chuyen X (dps)
     float gyro_y = 0.0f;        // Con quay hoi chuyen Y (dps)
     float gyro_z = 0.0f;        // Con quay hoi chuyen Z (dps)
-    std::string posture = "Phang (Upright)";
+    float tilt_degrees = 0.0f;  // Goc nghieng so voi mat phang (0-90 do)
+    std::string posture = "Chua co du lieu";
 };
 
 struct CoreS3SensorSnapshot {
@@ -69,12 +72,20 @@ private:
     i2c_master_bus_handle_t i2c_bus_ = nullptr;
     i2c_master_dev_handle_t ltr553_dev_ = nullptr;
     i2c_master_dev_handle_t bmi270_dev_ = nullptr;
+    bool ltr553_available_ = false;
+    bool bmi270_available_ = false;
     bool initialized_ = false;
+    // GetSnapshot() is called from the MCP thread, the app loop and the LVGL
+    // timers; the shared I2C bus must only be driven by one of them at a time.
+    SemaphoreHandle_t i2c_mutex_ = nullptr;
 
-    void InitLtr553();
-    void InitBmi270();
-    void ReadLtr553(LightSensorData& data);
-    void ReadBmi270(MotionSensorData& data);
+    bool InitLtr553();
+    bool InitBmi270();
+    bool ReadLtr553(LightSensorData& data);
+    bool ReadBmi270(MotionSensorData& data);
+
+    bool WriteRegs(i2c_master_dev_handle_t dev, uint8_t reg, const uint8_t* data, size_t len, int timeout_ms);
+    bool ReadRegs(i2c_master_dev_handle_t dev, uint8_t reg, uint8_t* data, size_t len, int timeout_ms);
 };
 
 #endif // SENSOR_MONITOR_H

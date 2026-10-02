@@ -1101,6 +1101,12 @@ if(CONFIG_BOARD_TYPE_ESP_SPOT_S3 OR CONFIG_BOARD_TYPE_ESP_SPOT_C5 OR CONFIG_BOAR
         espressif__bmi270_sensor
     )
 endif()
+# CoreS3 smart home hub drives the on-board BMI270 and needs its config blob
+if(CONFIG_BOARD_TYPE_M5STACK_CORE_S3 AND CONFIG_ENABLE_SMART_HOME_HUB)
+    list(APPEND MAIN_PRIV_REQUIRES_EXTRA
+        espressif__bmi270_sensor
+    )
+endif()
 if(CONFIG_BOARD_TYPE_ESP_VOCAT AND IDF_VERSION_MAJOR LESS 6)
     list(APPEND MAIN_PRIV_REQUIRES_EXTRA
         espressif__touch_slider_sensor

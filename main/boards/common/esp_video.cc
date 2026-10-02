@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <cstdio>
 #include <cstring>
+#include <freertos/semphr.h>
 
 #include "esp_imgfx_color_convert.h"
 #include "esp_video_device.h"
@@ -108,6 +109,11 @@ static void log_available_video_devices() {
 #endif  // CONFIG_XIAOZHI_ENABLE_CAMERA_DEBUG_MODE
 
 EspVideo::EspVideo(const esp_video_init_config_t& config) {
+    frame_mutex_ = xSemaphoreCreateMutex();
+    if (frame_mutex_ == nullptr) {
+        ESP_LOGE(TAG, "failed to create camera frame mutex");
+    }
+
     if (esp_video_init(&config) != ESP_OK) {
         ESP_LOGE(TAG, "esp_video_init failed");
         return;
@@ -412,6 +418,26 @@ void EspVideo::SetExplainUrl(const std::string& url, const std::string& token) {
 }
 
 bool EspVideo::Capture() {
+    // Hold the frame mutex for the whole capture: a live preview task may be
+    // mid-DQBUF on the single DVP buffer, and DVP has no queue to fall back on.
+    if (frame_mutex_ != nullptr &&
+        xSemaphoreTake(frame_mutex_, pdMS_TO_TICKS(2000)) != pdTRUE) {
+        ESP_LOGE(TAG, "Capture failed: camera busy (frame mutex timeout)");
+        return false;
+    }
+    bool ok = CaptureImpl();
+    if (frame_mutex_ != nullptr) {
+        xSemaphoreGive(frame_mutex_);
+    }
+    if (ok) {
+        // Must run with the mutex released: the board hook grabs another frame
+        // for its full-screen still view.
+        Board::GetInstance().OnPhotoCaptured();
+    }
+    return ok;
+}
+
+bool EspVideo::CaptureImpl() {
     if (encoder_thread_.joinable()) {
         encoder_thread_.join();
     }
@@ -892,6 +918,19 @@ bool EspVideo::CapturePreviewFrame(uint8_t* rgb565_dest, size_t dest_size, uint1
     if (!streaming_on_ || video_fd_ < 0 || rgb565_dest == nullptr) {
         return false;
     }
+
+    // Never block the preview: if a still capture owns the buffer, skip this frame.
+    if (frame_mutex_ != nullptr && xSemaphoreTake(frame_mutex_, pdMS_TO_TICKS(0)) != pdTRUE) {
+        return false;
+    }
+    struct FrameGuard {
+        SemaphoreHandle_t mutex;
+        ~FrameGuard() {
+            if (mutex != nullptr) {
+                xSemaphoreGive(mutex);
+            }
+        }
+    } guard{frame_mutex_};
 
     struct v4l2_buffer buf = {};
     buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
