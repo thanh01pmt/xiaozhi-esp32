@@ -10,21 +10,36 @@ related:
   - ../plans/2026-10-02-smart-home-hub-mcp-miniapp-plan.md
 ---
 
-# Hướng Dẫn Cài Đặt Môi Trường và Khắc Phục Sự Cố Dự Án XiaoZhi ESP32
+# Hướng Dẫn Cài Đặt Môi Trường, Script Tự Động và Khắc Phục Sự Cố
 
-Tài liệu này tổng hợp toàn bộ các lưu ý về thiết lập công cụ, môi trường build, sự cố tương thích phiên bản ESP-IDF v6.1 và các điểm cần ghi nhớ khi bắt đầu làm việc với một workspace/dự án mới trên macOS / Linux.
+Tài liệu này tổng hợp toàn bộ các lưu ý về thiết lập công cụ, script tự động hoá nạp firmware, môi trường build, sự cố tương thích phiên bản ESP-IDF v6.1 và giải pháp cho phần cứng M5Stack CoreS3.
 
 ---
 
-## 1. Yêu cầu Môi trường & Công cụ Bắt buộc
+## 1. Sử Dụng Script Tự Động Hoá 1 Click (Recommended)
+
+Để không phải gõ nhiều lệnh dài phức tạp, dự án đã có sẵn script tự động:
+📁 `docs/setup/flash_cores3.sh`
+
+```bash
+# Nạp và theo dõi monitor ngay lập tức (mặc định cổng /dev/cu.usbmodem2101)
+./docs/setup/flash_cores3.sh
+
+# Hoặc chỉ định rõ cổng USB và hành động:
+./docs/setup/flash_cores3.sh /dev/cu.usbmodem2101 all     # Build + Flash + Monitor
+./docs/setup/flash_cores3.sh /dev/cu.usbmodem2101 flash   # Chỉ Flash
+./docs/setup/flash_cores3.sh /dev/cu.usbmodem2101 monitor # Chỉ mở Monitor
+```
+*(Khi xem monitor, nhấn `Ctrl + ]` để thoát).*
+
+---
+
+## 2. Yêu cầu Môi trường & Công cụ Bắt buộc
 
 Dự án XiaoZhi yêu cầu tối thiểu **ESP-IDF v6.0.1**, khuyến nghị dùng **ESP-IDF v6.1** (IDF 5.x không còn được hỗ trợ).
 
 ### A. Cài đặt các công cụ hệ thống (Host Tooling trên macOS)
-Nếu máy Mac mới cài đặt hoặc thiếu công cụ dòng lệnh:
 ```bash
-# Cài đặt trình quản lý gói Homebrew nếu chưa có
-# Cài đặt cmake và ninja (Bắt buộc cho Ninja build system của ESP-IDF)
 brew install cmake ninja git
 ```
 
@@ -44,73 +59,45 @@ source ~/esp/esp-idf/export.sh
 
 ---
 
-## 2. Các Vấn đề & Giải pháp Kỹ thuật Đã Gặp (Gotchas & Fixes)
+## 3. Các Vấn đề Kỹ thuật Đã Xử Lý (Troubleshooting & Hardware Gotchas)
 
-### 2.1. Lần build đầu tiên bị treo / mất 20–30 phút
-- **Hiện tượng**: Khi chạy `python3 scripts/build.py ...`, lệnh dừng rất lâu ở bước `NOTE: Processing 74 dependencies: [1/74] ... [65/74] lvgl/lvgl ...`.
-- **Nguyên nhân**: Dự án dùng **74 managed components** (LVGL 9, ESP-SR AI models ~50MB, esp32-camera, codec...). Lần đầu tiên build, IDF Component Manager phải tải toàn bộ 74 gói này từ server về `~/.espressif/component_cache`.
-- **Giải pháp**:
-  - Không tắt terminal / không nhấn `Ctrl + C`. Hãy đợi 15–20 phút để toàn bộ gói được tải về.
-  - Sau khi tải xong lần đầu, file `dependencies.lock` được sinh ra. **Từ lần build thứ 2 trở đi, bước này sẽ mất 0 giây**.
-
-### 2.2. Lỗi tương thích API GDMA giữa ESP-IDF v6.1 và component `78__uart-uhci`
+### 3.1. Lỗi PSRAM trên M5Stack CoreS3 (`PSRAM chip is not connected, or wrong PSRAM line mode`)
 - **Hiện tượng**:
   ```text
-  error: 'gdma_get_alignment_constraints' was not declared in this scope; 
-  did you mean 'gdma_get_channel_alignment_constraints'?
+  E (33) octal_psram: PSRAM chip is not connected, or wrong PSRAM line mode
+  E cpu_start: Failed to init external RAM!
+  abort() was called at PC 0x420057dd on core 0
   ```
-- **Nguyên nhân**: Từ ESP-IDF v6.0 trở đi, API GDMA đổi tên hàm `gdma_get_alignment_constraints` thành `gdma_get_channel_alignment_constraints` và dùng struct `gdma_channel_alignment_info_t`.
-- **Giải pháp**: Tại `managed_components/78__uart-uhci/src/uart_uhci.cc`:
-  ```cpp
-  #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(6, 0, 0)
-      gdma_channel_alignment_info_t align_info = {};
-      gdma_get_channel_alignment_constraints(rx_dma_chan_, &align_info);
-      rx_int_mem_align_ = align_info.int_mem_alignment;
-      rx_ext_mem_align_ = align_info.ext_no_enc_mem_alignment;
-  #else
-      gdma_get_alignment_constraints(rx_dma_chan_, &rx_int_mem_align_, &rx_ext_mem_align_);
-  #endif
+- **Nguyên nhân**: M5Stack CoreS3 (bản tiêu chuẩn) sử dụng chế độ giao tiếp **Quad SPI PSRAM (4-line SPI)**. Khi cấu hình `CONFIG_SPIRAM_MODE_OCT=y` (8-line OPI) hoặc ép xung 80MHz, MSPI timing calibration bị lỗi (`MSPI Timing: tuning fail`), gây crash bootloader liên tục (bootloop).
+- **Giải pháp**: Cấu hình trong `main/boards/m5stack/core-s3/config.json`:
+  ```json
+  "sdkconfig_append": [
+      "CONFIG_SPIRAM=y",
+      "CONFIG_SPIRAM_MODE_QUAD=y",
+      "CONFIG_CAMERA_GC0308=y"
+  ]
   ```
 
-### 2.3. Lỗi thứ tự Designated Initializer trong C++20 trên ESP-IDF
-- **Hiện tượng**:
-  ```text
-  error: designator order for field 'esp_lcd_panel_io_i2c_config_t::scl_speed_hz' 
-  does not match declaration order in 'esp_lcd_panel_io_i2c_config_t'
-  ```
-- **Nguyên nhân**: Dự án cấu hình chuẩn `-std=gnu++26 / C++20`, yêu cầu thứ tự các trường designated initializer (`.field = value`) phải khớp 100% với thứ tự khai báo trong file header `esp_lcd_io_i2c.h`.
-- **Giải pháp**: Khởi tạo bằng rỗng `{}` và gán tường minh theo thứ tự:
-  ```cpp
-  esp_lcd_panel_io_i2c_config_t tp_io_config = {};
-  tp_io_config.dev_addr = ESP_LCD_TOUCH_IO_I2C_FT5x06_ADDRESS;
-  tp_io_config.scl_speed_hz = 400000;
-  tp_io_config.control_phase_bytes = 1;
-  tp_io_config.dc_bit_offset = 0;
-  tp_io_config.lcd_cmd_bits = 8;
-  tp_io_config.flags.disable_control_phase = 1;
-  ```
+### 3.2. Lần build đầu tiên bị treo / mất 20–30 phút
+- **Hiện tượng**: Lệnh dừng rất lâu ở bước `NOTE: Processing 74 dependencies: [1/74] ... [65/74] lvgl/lvgl ...`.
+- **Nguyên nhân**: Dự án dùng **74 managed components** (LVGL 9, ESP-SR AI models ~50MB, esp32-camera, codec...). Lần đầu tiên build, IDF Component Manager phải tải toàn bộ 74 gói này về `~/.espressif/component_cache`.
+- **Giải pháp**: Không tắt terminal. Sau khi tải xong lần đầu, file `dependencies.lock` được sinh ra. **Từ lần build thứ 2 trở đi, bước này chỉ mất 0 giây**.
 
-### 2.4. Khai báo component phụ thuộc vào `PRIV_REQUIRES`
-- **Hiện tượng**:
-  ```text
-  Compilation failed because network_client.cc (in "main" component) includes esp_http_client.h...
-  However, esp_http_client component(s) is not in the requirements list of "main".
-  ```
-- **Giải pháp**: Khi thêm các thư viện chuẩn ESP-IDF như `esp_http_client`, `esp_http_server` vào `main/`, phải thêm tên component vào danh sách `PRIV_REQUIRES` của `idf_component_register(...)` trong file `main/CMakeLists.txt`:
-  ```cmake
-  PRIV_REQUIRES
-      ...
-      esp_http_client
-      esp_http_server
-  ```
+### 3.3. Lỗi tương thích API GDMA giữa ESP-IDF v6.1 và `78__uart-uhci`
+- **Hiện tượng**: `error: 'gdma_get_alignment_constraints' was not declared in this scope`.
+- **Giải pháp**: Cập nhật hàm gọi `gdma_get_channel_alignment_constraints` trong `managed_components/78__uart-uhci/src/uart_uhci.cc`.
 
-### 2.5. Xung đột môi trường Python khi chạy `idf.py flash`
-- **Hiện tượng**:
-  ```text
-  '.../python_env/idf6.1_py3.12_env/bin/python' is currently active in the environment 
-  while the project was configured with '.../bin/python3'. Run 'idf.py fullclean' to start again.
-  ```
-- **Giải pháp**: Thay vì chạy `idf.py flash` (làm kích hoạt kiểm tra lại biến môi trường của CMake), ta dùng lệnh **esptool nạp trực tiếp** với tốc độ cao:
+### 3.4. Lỗi thứ tự Designated Initializer trong C++20 (`-std=gnu++26`)
+- **Hiện tượng**: `error: designator order for field 'esp_lcd_panel_io_i2c_config_t::scl_speed_hz' does not match declaration order`.
+- **Giải pháp**: Gán tường minh các trường theo thứ tự khai báo trong `esp_lcd_io_i2c.h` hoặc khởi tạo rỗng `{}` trước khi gán.
+
+### 3.5. Khai báo component phụ thuộc vào `PRIV_REQUIRES`
+- **Hiện tượng**: `Compilation failed because network_client.cc includes esp_http_client.h...`.
+- **Giải pháp**: Thêm `esp_http_client` và `esp_http_server` vào `PRIV_REQUIRES` của `main/CMakeLists.txt`.
+
+### 3.6. Lỗi nạp flash bằng `flash_args` (`No such file or directory: bootloader/bootloader.bin`)
+- **Hiện tượng**: Chạy `python3 -m esptool ... @build/flash_args` từ thư mục gốc bị báo không tìm thấy file.
+- **Giải pháp**: `flash_args` được sinh ra cho ngữ cảnh bên trong thư mục `build/`. Khi nạp từ thư mục gốc, phải trỏ đường dẫn đầy đủ:
   ```bash
   python3 -m esptool --chip esp32s3 -p /dev/cu.usbmodem2101 -b 460800 \
     --before default-reset --after hard-reset write-flash \
@@ -124,7 +111,7 @@ source ~/esp/esp-idf/export.sh
 
 ---
 
-## 3. Thiết lập Wi-Fi Mặc Định Không Cần Hotspot / Server
+## 4. Thiết lập Wi-Fi Mặc Định Không Cần Hotspot / Server
 
 Để bo mạch sau khi nạp tự động kết nối thẳng vào Wi-Fi nhà bạn (bỏ qua bước phát hotspot cấu hình AP):
 
@@ -136,30 +123,3 @@ source ~/esp/esp-idf/export.sh
    #define DEFAULT_WIFI_PASSWORD "Mat_Khau_Wifi"
    ```
 2. Mã nguồn trong `main/boards/common/wifi_board.cc` sẽ tự động đọc cấu hình này và lưu vào bộ nhớ NVS trong lần khởi động đầu tiên.
-
----
-
-## 4. Quy trình Biên dịch Chuẩn cho Dự án Mới
-
-Khi bắt đầu một ca làm việc hoặc clone repository sang máy mới:
-
-```bash
-# Bước 1: Kích hoạt môi trường
-source ~/esp/esp-idf/export.sh
-
-# Bước 2: Chuyển vào thư mục dự án
-cd /Users/tonypham/MEGA/IDF/xiaozhi-esp32
-
-# Bước 3: Chạy test kiểm tra toàn bộ matrix cấu hình
-python3 -m unittest discover -s scripts/tests -v
-
-# Bước 4: Biên dịch bo mạch mong muốn (Ví dụ M5Stack CoreS3)
-python3 scripts/build.py m5stack/core-s3 --name m5stack-core-s3
-
-# Bước 5: Nạp firmware xuống cổng kết nối USB
-python3 -m esptool --chip esp32s3 -p /dev/cu.usbmodem2101 -b 460800 write-flash "@build/flash_args"
-
-# Bước 6: Theo dõi Serial Monitor
-idf.py -p /dev/cu.usbmodem2101 monitor
-```
-*(Thoát Serial Monitor bằng tổ hợp phím `Ctrl + ]`).*

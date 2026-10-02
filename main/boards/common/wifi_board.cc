@@ -21,8 +21,10 @@
 #include "blufi.h"
 #endif
 
-#if __has_include("wifi_secrets.h")
 #include "wifi_secrets.h"
+
+#if CONFIG_ENABLE_SMART_HOME_HUB
+#include "smart_home_hub.h"
 #endif
 
 static const char *TAG = "WifiBoard";
@@ -105,17 +107,34 @@ void WifiBoard::TryWifiConnect() {
     auto& ssid_manager = SsidManager::GetInstance();
 
 #ifdef DEFAULT_WIFI_SSID
-    if (ssid_manager.GetSsidList().empty() && strlen(DEFAULT_WIFI_SSID) > 0) {
-        ESP_LOGI(TAG, "Adding default Wi-Fi from wifi_secrets.h: %s", DEFAULT_WIFI_SSID);
-        ssid_manager.AddSsid(DEFAULT_WIFI_SSID, DEFAULT_WIFI_PASSWORD);
+    if (strlen(DEFAULT_WIFI_SSID) > 0) {
+        bool found = false;
+        for (const auto& item : ssid_manager.GetSsidList()) {
+            if (item.ssid == DEFAULT_WIFI_SSID) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            ESP_LOGI(TAG, "Adding default Wi-Fi from wifi_secrets.h: %s", DEFAULT_WIFI_SSID);
+            ssid_manager.AddSsid(DEFAULT_WIFI_SSID, DEFAULT_WIFI_PASSWORD);
+        }
     }
+#else
+    ESP_LOGW(TAG, "DEFAULT_WIFI_SSID is not defined in this build!");
 #endif
 
-    bool have_ssid = !ssid_manager.GetSsidList().empty();
+    const auto& list = ssid_manager.GetSsidList();
+    ESP_LOGI(TAG, "Configured SSID count: %d", (int)list.size());
+    for (size_t i = 0; i < list.size(); i++) {
+        ESP_LOGI(TAG, " - SSID[%d]: '%s'", (int)i, list[i].ssid.c_str());
+    }
+
+    bool have_ssid = !list.empty();
 
     if (have_ssid) {
         // Start connection attempt with timeout
-        ESP_LOGI(TAG, "Starting WiFi connection attempt");
+        ESP_LOGI(TAG, "Starting WiFi connection attempt to configured SSIDs");
         esp_timer_start_once(connect_timer_, CONNECT_TIMEOUT_SEC * 1000000ULL);
         WifiManager::GetInstance().StartStation();
     } else {
@@ -137,6 +156,9 @@ void WifiBoard::OnNetworkEvent(NetworkEvent event, const std::string& data) {
 #endif
             in_config_mode_ = false;
             ESP_LOGI(TAG, "Connected to WiFi: %s", data.c_str());
+#if CONFIG_ENABLE_SMART_HOME_HUB
+            SmartHomeHub::GetInstance().GetWebServer().Start();
+#endif
             break;
         case NetworkEvent::Scanning:
             ESP_LOGI(TAG, "WiFi scanning");

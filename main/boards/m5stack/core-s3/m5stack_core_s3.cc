@@ -225,12 +225,12 @@ private:
             }
 #endif
 
-            // 短触 (< 500ms): Bật/Tắt trạng thái Chat hoặc WiFi Config
+            // 短触 (< 500ms): Bật/Tắt trạng thái Chat (chỉ khi đã khởi động xong)
             if (touch_duration < TOUCH_THRESHOLD_MS) {
                 Application::GetInstance().Schedule([this]() {
                     auto& app = Application::GetInstance();
                     if (app.GetDeviceState() == kDeviceStateStarting) {
-                        EnterWifiConfigMode();
+                        ESP_LOGI(TAG, "Touch ignored while system is starting");
                         return;
                     }
                     app.ToggleChatState();

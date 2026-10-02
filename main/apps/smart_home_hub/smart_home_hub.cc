@@ -19,7 +19,6 @@ void SmartHomeHub::Initialize(lv_display_t* lv_display) {
         dashboard_screen_.Initialize(lv_display);
     }
 
-    web_server_.Start();
     SmartHomeMcpTools::RegisterTools(this);
     initialized_ = true;
     ESP_LOGI(TAG, "SmartHomeHub initialized successfully");
