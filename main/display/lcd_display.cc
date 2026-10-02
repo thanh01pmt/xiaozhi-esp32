@@ -752,6 +752,18 @@ void LcdDisplay::SetPreviewImage(std::unique_ptr<LvglImage> image) {
         return;
     }
 
+    // Xoa bot anh cu de giai phong bo nho PSRAM/RAM (GC memory management)
+    uint32_t child_count = lv_obj_get_child_cnt(content_);
+    for (int i = (int)child_count - 1; i >= 0; i--) {
+        lv_obj_t* child = lv_obj_get_child(content_, i);
+        if (child != nullptr) {
+            void* type_ptr = lv_obj_get_user_data(child);
+            if (type_ptr != nullptr && strcmp((const char*)type_ptr, "image") == 0) {
+                lv_obj_del(child);
+            }
+        }
+    }
+
     auto lvgl_theme = static_cast<LvglTheme*>(current_theme_);
     // Create a message bubble for image preview
     lv_obj_t* img_bubble = lv_obj_create(content_);

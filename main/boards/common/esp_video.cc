@@ -888,6 +888,64 @@ bool EspVideo::Capture() {
     return true;
 }
 
+bool EspVideo::CapturePreviewFrame(uint8_t* rgb565_dest, size_t dest_size, uint16_t& out_w, uint16_t& out_h) {
+    if (!streaming_on_ || video_fd_ < 0 || rgb565_dest == nullptr) {
+        return false;
+    }
+
+    struct v4l2_buffer buf = {};
+    buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    buf.memory = V4L2_MEMORY_MMAP;
+    if (ioctl(video_fd_, VIDIOC_DQBUF, &buf) != 0) {
+        return false;
+    }
+
+    uint16_t w = frame_.width ? frame_.width : 320;
+    uint16_t h = frame_.height ? frame_.height : 240;
+    out_w = w;
+    out_h = h;
+    size_t required_bytes = w * h * 2;
+    if (dest_size < required_bytes) {
+        (void)ioctl(video_fd_, VIDIOC_QBUF, &buf);
+        return false;
+    }
+
+    void* src_buf = mmap_buffers_[buf.index].start;
+    size_t src_len = mmap_buffers_[buf.index].length;
+    bool success = false;
+
+    if (sensor_format_ == V4L2_PIX_FMT_RGB565) {
+        memcpy(rgb565_dest, src_buf, MIN(src_len, required_bytes));
+        success = true;
+    } else if (sensor_format_ == V4L2_PIX_FMT_YUYV || sensor_format_ == V4L2_PIX_FMT_UYVY || sensor_format_ == V4L2_PIX_FMT_YUV422P) {
+        esp_imgfx_color_convert_cfg_t convert_cfg = {
+            .in_res = {.width = static_cast<int16_t>(w), .height = static_cast<int16_t>(h)},
+            .in_pixel_fmt = static_cast<esp_imgfx_pixel_fmt_t>(sensor_format_ == V4L2_PIX_FMT_YUV422P ? V4L2_PIX_FMT_YUYV : sensor_format_),
+            .out_pixel_fmt = ESP_IMGFX_PIXEL_FMT_RGB565_LE,
+            .color_space_std = ESP_IMGFX_COLOR_SPACE_STD_BT601,
+        };
+        esp_imgfx_color_convert_handle_t convert_handle = nullptr;
+        if (esp_imgfx_color_convert_open(&convert_cfg, &convert_handle) == ESP_IMGFX_ERR_OK && convert_handle != nullptr) {
+            esp_imgfx_data_t input_data = {
+                .data = static_cast<uint8_t*>(src_buf),
+                .data_len = static_cast<uint32_t>(src_len),
+            };
+            esp_imgfx_data_t output_data = {
+                .data = rgb565_dest,
+                .data_len = static_cast<uint32_t>(required_bytes),
+            };
+            if (esp_imgfx_color_convert_process(convert_handle, &input_data, &output_data) == ESP_IMGFX_ERR_OK) {
+                success = true;
+            }
+            esp_imgfx_color_convert_close(convert_handle);
+        }
+    }
+
+    // Re-queue buffer immediately so hardware can capture next frame
+    (void)ioctl(video_fd_, VIDIOC_QBUF, &buf);
+    return success;
+}
+
 bool EspVideo::SetHMirror(bool enabled) {
     if (video_fd_ < 0)
         return false;

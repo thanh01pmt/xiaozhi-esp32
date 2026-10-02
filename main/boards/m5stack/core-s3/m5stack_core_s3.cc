@@ -19,6 +19,7 @@
 
 #if CONFIG_ENABLE_SMART_HOME_HUB
 #include "smart_home_hub.h"
+#include "sensor_monitor.h"
 #endif
 
 #define TAG "M5StackCoreS3Board"
@@ -411,6 +412,7 @@ public:
         GetBacklight()->RestoreBrightness();
 
 #if CONFIG_ENABLE_SMART_HOME_HUB
+        SensorMonitor::GetInstance().Initialize(pmic_, i2c_bus_);
         SmartHomeHub::GetInstance().Initialize(lv_display_get_default());
 #endif
     }
@@ -448,6 +450,11 @@ public:
         }
 
         level = pmic_->GetBatteryLevel();
+        return true;
+    }
+
+    virtual bool GetTemperature(float& esp32temp) override {
+        esp32temp = pmic_->GetTemperature();
         return true;
     }
 

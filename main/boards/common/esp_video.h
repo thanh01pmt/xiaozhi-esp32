@@ -49,6 +49,7 @@ public:
 
     virtual void SetExplainUrl(const std::string& url, const std::string& token);
     virtual bool Capture();
+    virtual bool CapturePreviewFrame(uint8_t* rgb565_dest, size_t dest_size, uint16_t& out_w, uint16_t& out_h) override;
     // 翻转控制函数
     virtual bool SetHMirror(bool enabled) override;
     virtual bool SetVFlip(bool enabled) override;

@@ -1,5 +1,6 @@
 #include "mcp_tools.h"
 #include "smart_home_hub.h"
+#include "sensor_monitor.h"
 #include "application.h"
 #include <esp_log.h>
 
@@ -74,5 +75,56 @@ void SmartHomeMcpTools::RegisterTools(SmartHomeHub* hub) {
             return true;
         });
 
-    ESP_LOGI(TAG, "Smart Home MCP tools successfully registered");
+    // 6. Tool liet ke danh sach tat ca man hinh co the mo tren thiet bi
+    mcp.AddTool("ui.list_screens",
+        "Liệt kê tất cả các màn hình có thể chuyển đổi trên thiết bị (main: Trợ lý AI chính, sensors: Thông số cảm biến & phần cứng, smarthome: Điều khiển nhà thông minh, camera: Chụp ảnh hoặc quan sát camera).",
+        PropertyList(),
+        [hub](const PropertyList& props) -> ReturnValue {
+            return hub->ListScreensJson();
+        });
+
+    // 7. Tool chuyen doi man hinh theo yeu cau cua nguoi dung
+    mcp.AddTool("ui.switch_screen",
+        "Chuyển đổi giao diện màn hình trên thiết bị theo yêu cầu.\n"
+        "screen_name: Tên màn hình cần chuyển ('main', 'sensors', 'smarthome', hoặc 'camera').",
+        PropertyList({
+            Property("screen_name", kPropertyTypeString)
+        }),
+        [hub](const PropertyList& props) -> ReturnValue {
+            std::string name = props["screen_name"].value<std::string>();
+            ESP_LOGI(TAG, "MCP Tool ui.switch_screen: %s", name.c_str());
+            Application::GetInstance().Schedule([hub, name]() {
+                hub->SwitchScreen(name);
+            });
+            return true;
+        });
+
+    // 8. Tool doc toan bo cam bien tren M5Stack CoreS3 (Grounding cho AI)
+    mcp.AddTool("sensor.get_all_sensors",
+        "Đọc toàn bộ số liệu cảm biến phần cứng của M5Stack CoreS3: Pin, sạc, nhiệt độ bo mạch, ánh sáng môi trường (Lux/Proximity - LTR-553ALS), cảm biến chuyển động & tư thế máy (Gia tốc/Con quay hồi chuyển 6 trục - BMI270), sóng Wi-Fi (RSSI, IP), dung lượng RAM và thời gian hoạt động.",
+        PropertyList(),
+        [](const PropertyList& props) -> ReturnValue {
+            return SensorMonitor::GetInstance().GetAllSensorsJson();
+        });
+
+    // 9. Tool doc chuyen sau tung loai cam bien
+    mcp.AddTool("sensor.get_sensor_data",
+        "Đọc thông số chi tiết của một loại cảm biến cụ thể trên thiết bị và đồng thời hiển thị thẻ thông số nổi bật của cảm biến đó lên màn hình.\n"
+        "sensor_type: Loại cảm biến cần đọc ('battery', 'temperature', 'light', 'motion', 'network', 'system').",
+        PropertyList({
+            Property("sensor_type", kPropertyTypeString)
+        }),
+        [hub](const PropertyList& props) -> ReturnValue {
+            std::string type = props["sensor_type"].value<std::string>();
+            ESP_LOGI(TAG, "MCP Tool sensor.get_sensor_data: %s", type.c_str());
+
+            // Tu dong bat the man hinh rieng cua cam bien do
+            Application::GetInstance().Schedule([hub, type]() {
+                hub->ShowSensorCard(type);
+            });
+
+            return SensorMonitor::GetInstance().GetSensorDataJson(type);
+        });
+
+    ESP_LOGI(TAG, "Smart Home, UI Navigation & Sensor MCP tools successfully registered");
 }

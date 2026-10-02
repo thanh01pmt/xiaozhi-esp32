@@ -52,7 +52,11 @@ if(CONFIG_ENABLE_SMART_HOME_HUB)
         "apps/smart_home_hub/network_client.cc"
         "apps/smart_home_hub/ble_controller.cc"
         "apps/smart_home_hub/web_config_server.cc"
+        "apps/smart_home_hub/sensor_monitor.cc"
         "apps/smart_home_hub/ui/dashboard_screen.cc"
+        "apps/smart_home_hub/ui/sensor_dashboard_screen.cc"
+        "apps/smart_home_hub/ui/sensor_card_screen.cc"
+        "apps/smart_home_hub/ui/camera_preview_screen.cc"
     )
 endif()
 
