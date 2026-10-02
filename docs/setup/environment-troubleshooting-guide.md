@@ -29,8 +29,24 @@ Tài liệu này tổng hợp toàn bộ các lưu ý về thiết lập công c
 ./docs/setup/flash_cores3.sh /dev/cu.usbmodem2101 all     # Build + Flash + Monitor
 ./docs/setup/flash_cores3.sh /dev/cu.usbmodem2101 flash   # Chỉ Flash
 ./docs/setup/flash_cores3.sh /dev/cu.usbmodem2101 monitor # Chỉ mở Monitor
+
+# Đổi ngôn ngữ (mặc định vi-VN)
+LANGUAGE=en-US ./docs/setup/flash_cores3.sh
 ```
 *(Khi xem monitor, nhấn `Ctrl + ]` để thoát).*
+
+Script build bằng lệnh này — ngôn ngữ là **tham số lúc build**, không phải option của board:
+
+```bash
+python3 scripts/build.py m5stack/core-s3 --name m5stack-core-s3 --language vi-VN
+```
+
+Liệt kê ngôn ngữ / model từ khoá thức dậy hợp lệ:
+
+```bash
+python3 scripts/build.py --list-languages
+python3 scripts/build.py --list-wake-words
+```
 
 ---
 
@@ -56,6 +72,23 @@ cd esp-idf
 ```bash
 source ~/esp/esp-idf/export.sh
 ```
+
+### D. Thiết lập IDE / clangd (loại bỏ lỗi giả)
+```bash
+# Sinh database lệnh biên dịch (tức thì, không build lại, không đụng CMake cache)
+ninja -C build -t compdb > build/compile_commands.json
+```
+
+File `.clangd` ở thư mục gốc đã trỏ sẵn clangd tới `build/compile_commands.json` (file này được `.gitignore` bỏ qua nên chỉ có tác dụng trên máy của bạn).
+
+Trong VS Code, **clangd phải là bản của Espressif**, không phải bản clangd mặc định — chỉ bản này hiểu `--target=xtensa-esp32s3-elf`, `-mlongcalls` và specs picolibc:
+
+```jsonc
+// .vscode/settings.json
+{ "clangd.path": "~/.espressif/tools/esp-clangd/esp-21.1.3_20260408/esp-clangd/bin/clangd" }
+```
+
+**Sai dấu hiệu:** nếu clangd báo `Unknown argument '-mlongcalls'`, `'sys/features.h' file not found`, `No type named 'string' in namespace 'std'`, hoặc gợi ý hàm LVGL 8 đã bị xoá (ví dụ `lv_chart_set_series_ext_y_array`) thì clangd **chưa** đọc được `compile_commands.json` — nghĩa là nó đang đoán mò include path. Chạy lại lệnh `ninja -C build -t compdb ...` sau khi đổi `config.json` hoặc `CMakeLists.txt`.
 
 ---
 
@@ -108,6 +141,11 @@ source ~/esp/esp-idf/export.sh
     0x20000 build/xiaozhi.bin \
     0x800000 build/generated_assets.bin
   ```
+
+### 3.7. Firmware bị mất tiếng Việt sau khi build (`Fail: test_language_and_wake_word_are_not_board_config_options`)
+- **Hiện tượng**: `python3 -m unittest discover -s scripts/tests` báo fail ở test trên, hoặc firmware nạp lên nói tiếng Trung.
+- **Nguyên nhân**: Có `CONFIG_LANGUAGE_VI_VN=y` nằm trong `sdkconfig_append` của `main/boards/m5stack/core-s3/config.json`. Repo coi ngôn ngữ và model từ khoá thức dậy là **tham số build**, không phải option của board, nên test cấm chúng ở `config.json`.
+- **Giải pháp**: Xoá dòng `CONFIG_LANGUAGE_*` khỏi `config.json`, build bằng cờ `--language` (xem mục 1). Khi đổi ngôn ngữ, nhớ build lại chứ chỉ flash lại binary cũ sẽ không có tác dụng.
 
 ---
 

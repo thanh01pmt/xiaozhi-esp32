@@ -9,6 +9,10 @@ set -e
 PORT="${1:-/dev/cu.usbmodem2101}"
 ACTION="${2:-all}" # all | build | flash | monitor
 
+# Ngôn ngữ không nằm trong config.json của board (repo cấm CONFIG_LANGUAGE_*
+# trong sdkconfig_append) mà là tham số lúc build. Xem --list-languages.
+LANGUAGE="${LANGUAGE:-vi-VN}"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
@@ -17,6 +21,7 @@ echo " XiaoZhi ESP32 - M5Stack CoreS3 Toolchain Helper"
 echo " Project: $PROJECT_ROOT"
 echo " Port:    $PORT"
 echo " Action:  $ACTION"
+echo " Language: $LANGUAGE"
 echo "=========================================================="
 
 # 1. Kích hoạt môi trường ESP-IDF nếu chưa nạp
@@ -36,7 +41,7 @@ cd "$PROJECT_ROOT"
 if [ "$ACTION" = "all" ] || [ "$ACTION" = "build" ]; then
     echo ""
     echo "[1/3] Biên dịch firmware cho M5Stack CoreS3..."
-    python3 scripts/build.py m5stack/core-s3 --name m5stack-core-s3
+    python3 scripts/build.py m5stack/core-s3 --name m5stack-core-s3 --language "$LANGUAGE"
     echo "[SUCCESS] Biên dịch thành công!"
 fi
 
