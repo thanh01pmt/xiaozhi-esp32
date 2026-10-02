@@ -17,6 +17,10 @@
 #include <esp_lcd_touch_ft5x06.h>
 #include <esp_lvgl_port.h>
 
+#if CONFIG_ENABLE_SMART_HOME_HUB
+#include "smart_home_hub.h"
+#endif
+
 #define TAG "M5StackCoreS3Board"
 
 class Pmic : public Axp2101 {
@@ -212,7 +216,16 @@ private:
             was_touched = false;
             int64_t touch_duration = (esp_timer_get_time() / 1000) - touch_start_time;
             
-            // 只有短触才触发
+#if CONFIG_ENABLE_SMART_HOME_HUB
+            // Giữ lâu >= 600ms: Bật/Tắt Smart Home Hub Dashboard
+            if (touch_duration >= 600) {
+                ESP_LOGI(TAG, "Long press detected (%lld ms) -> Toggle SmartHomeHub Dashboard", touch_duration);
+                SmartHomeHub::GetInstance().ToggleDashboard();
+                return;
+            }
+#endif
+
+            // 短触 (< 500ms): Bật/Tắt trạng thái Chat hoặc WiFi Config
             if (touch_duration < TOUCH_THRESHOLD_MS) {
                 Application::GetInstance().Schedule([this]() {
                     auto& app = Application::GetInstance();
@@ -399,6 +412,10 @@ public:
         InitializeCamera();
         InitializeFt6336TouchPad();
         GetBacklight()->RestoreBrightness();
+
+#if CONFIG_ENABLE_SMART_HOME_HUB
+        SmartHomeHub::GetInstance().Initialize(lv_display_get_default());
+#endif
     }
 
     virtual AudioCodec* GetAudioCodec() override {

@@ -1149,4 +1149,19 @@ menu "TAIJIPAI_S3_CONFIG"
         启动双声道
 endmenu
 
+menu "Smart Home Hub Configuration"
+    config ENABLE_SMART_HOME_HUB
+        bool "Enable Smart Home Hub Mini-App"
+        default y
+        help
+            Enable the Smart Home Hub Mini-App with AI Voice MCP tools, Touch Dashboard, and IoT controller.
+
+    config SMARTHOME_HOMEASSISTANT_URL
+        string "Default Home Assistant URL"
+        default "http://homeassistant.local:8123"
+        depends on ENABLE_SMART_HOME_HUB
+        help
+            Base URL of the local Home Assistant instance.
+endmenu
+
 endmenu

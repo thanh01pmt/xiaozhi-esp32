@@ -21,6 +21,10 @@
 #include "blufi.h"
 #endif
 
+#if __has_include("wifi_secrets.h")
+#include "wifi_secrets.h"
+#endif
+
 static const char *TAG = "WifiBoard";
 
 // Connection timeout in seconds
@@ -99,6 +103,14 @@ void WifiBoard::StartNetwork() {
 
 void WifiBoard::TryWifiConnect() {
     auto& ssid_manager = SsidManager::GetInstance();
+
+#ifdef DEFAULT_WIFI_SSID
+    if (ssid_manager.GetSsidList().empty() && strlen(DEFAULT_WIFI_SSID) > 0) {
+        ESP_LOGI(TAG, "Adding default Wi-Fi from wifi_secrets.h: %s", DEFAULT_WIFI_SSID);
+        ssid_manager.AddSsid(DEFAULT_WIFI_SSID, DEFAULT_WIFI_PASSWORD);
+    }
+#endif
+
     bool have_ssid = !ssid_manager.GetSsidList().empty();
 
     if (have_ssid) {

@@ -21,6 +21,7 @@ Mọi quy ước về tạo, đặt tên và cấu trúc tài liệu tuân thủ
 
 ### 3. Kế Hoạch Thực Thi (Plans)
 - [2026-10-02: Kế Hoạch Tối Ưu Hiệu Năng và Hoàn Thiện Tích Hợp M5Stack CoreS3](./plans/2026-10-02-m5stack-core-s3-performance-optimization-plan.md) *(Active)*
+- [2026-10-02: Kế Hoạch Triển Khai Mini-App Smart Home Hub qua MCP trên M5Stack CoreS3](./plans/2026-10-02-smart-home-hub-mcp-miniapp-plan.md) *(Active)*
 
 ### 4. Phân Tích & Nghiên Cứu (Analysis)
 - [2026-10-02: Đánh Giá Phần Cứng và Phân Tích Hiệu Năng Đồng Thời trên M5Stack CoreS3](./analysis/2026-10-02/2026-10-02-m5stack-core-s3-hardware-performance-audit.md) *(Final)*

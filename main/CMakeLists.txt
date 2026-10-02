@@ -43,7 +43,18 @@ set(SOURCES "audio/audio_codec.cc"
             "main.cc"
             )
 
-set(INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg" "audio" "audio/demuxer" "protocols")
+set(INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg" "audio" "audio/demuxer" "protocols" "apps/smart_home_hub" "apps/smart_home_hub/ui")
+
+if(CONFIG_ENABLE_SMART_HOME_HUB)
+    list(APPEND SOURCES
+        "apps/smart_home_hub/smart_home_hub.cc"
+        "apps/smart_home_hub/mcp_tools.cc"
+        "apps/smart_home_hub/network_client.cc"
+        "apps/smart_home_hub/ble_controller.cc"
+        "apps/smart_home_hub/web_config_server.cc"
+        "apps/smart_home_hub/ui/dashboard_screen.cc"
+    )
+endif()
 
 # Add board common files
 list(APPEND SOURCES
