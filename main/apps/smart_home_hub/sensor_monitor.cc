@@ -37,7 +37,7 @@ constexpr uint8_t kBmiRegAccConf = BMI2_ACC_CONF_ADDR;   // 0x40
 constexpr uint8_t kBmiRegGyrConf = BMI2_GYR_CONF_ADDR;   // 0x42
 constexpr uint8_t kBmiRegDataStart = 0x0C;               // ACC_X_LSB .. GYR_Z_MSB (12 bytes)
 constexpr size_t kBmiConfigFileSize = 8192;
-constexpr size_t kBmiChunkSize = 128;
+constexpr size_t kBmiChunkSize = 32;
 // ACC_CONF / GYR_CONF = range(0b00) << 6 | bwp(0b10) << 4 | odr(0x08)
 //   accel  -> +/-2 g     -> 16384 LSB/g
 //   gyroscope -> +/-2000 dps -> 16.4 LSB/dps
@@ -53,16 +53,34 @@ SensorMonitor& SensorMonitor::GetInstance() {
 bool SensorMonitor::WriteRegs(i2c_master_dev_handle_t dev, uint8_t reg, const uint8_t* data,
                               size_t len, int timeout_ms) {
     // Single transaction: send the register address followed by the payload.
-    uint8_t buf[160];
-    if (len + 1 > sizeof(buf)) return false;
+    uint8_t buf[64];
+    if (len + 1 > sizeof(buf)) {
+        ESP_LOGE(TAG, "i2c write 0x%02X len=%u rejected: payload too big", reg,
+                 static_cast<unsigned int>(len));
+        return false;
+    }
     buf[0] = reg;
     memcpy(buf + 1, data, len);
-    return i2c_master_transmit(dev, buf, len + 1, timeout_ms) == ESP_OK;
+    // A bare false here told us nothing on the first hardware run, so name the
+    // failing transfer: register, length and the driver error.
+    const esp_err_t err = i2c_master_transmit(dev, buf, len + 1, timeout_ms);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "i2c write reg 0x%02X len=%u failed: %s", reg,
+                 static_cast<unsigned int>(len), esp_err_to_name(err));
+        return false;
+    }
+    return true;
 }
 
 bool SensorMonitor::ReadRegs(i2c_master_dev_handle_t dev, uint8_t reg, uint8_t* data, size_t len,
                              int timeout_ms) {
-    return i2c_master_transmit_receive(dev, &reg, 1, data, len, timeout_ms) == ESP_OK;
+    const esp_err_t err = i2c_master_transmit_receive(dev, &reg, 1, data, len, timeout_ms);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "i2c read reg 0x%02X len=%u failed: %s", reg,
+                 static_cast<unsigned int>(len), esp_err_to_name(err));
+        return false;
+    }
+    return true;
 }
 
 void SensorMonitor::Initialize(Axp2101* pmic, i2c_master_bus_handle_t i2c_bus) {
@@ -208,7 +226,8 @@ bool SensorMonitor::InitBmi270() {
         if (!WriteRegs(bmi270_dev_, BMI2_INIT_ADDR_0, addr, sizeof(addr), 100) ||
             !WriteRegs(bmi270_dev_, BMI2_INIT_DATA_ADDR, &bmi270_config_file[index],
                        kBmiChunkSize, 200)) {
-            ESP_LOGE(TAG, "BMI270 config upload failed at offset %u", (unsigned)index);
+            ESP_LOGE(TAG, "BMI270 config upload failed at offset %u of %zu (chunk %zu bytes)",
+                     static_cast<unsigned int>(index), kBmiConfigFileSize, kBmiChunkSize);
             i2c_master_bus_rm_device(bmi270_dev_);
             bmi270_dev_ = nullptr;
             return false;

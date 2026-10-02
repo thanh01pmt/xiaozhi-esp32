@@ -261,6 +261,21 @@ void SensorCardScreen::CreateUI() {
             }
         },
         LV_EVENT_CLICKED, this);
+    // Swipe left/right walks the six cards. The footer dots already implied
+    // pagination but nothing was wired to them.
+    lv_obj_add_event_cb(
+        screen_,
+        [](lv_event_t* e) {
+            auto self = static_cast<SensorCardScreen*>(lv_event_get_user_data(e));
+            if (!self) return;
+            const lv_dir_t dir = lv_indev_get_gesture_dir(lv_event_get_indev(e));
+            if (dir == LV_DIR_LEFT) {
+                self->ShowRelative(1);
+            } else if (dir == LV_DIR_RIGHT) {
+                self->ShowRelative(-1);
+            }
+        },
+        LV_EVENT_GESTURE, this);
 }
 
 void SensorCardScreen::BuildIcon(SensorCardType type) {
@@ -514,8 +529,29 @@ void SensorCardScreen::Show(SensorCardType type) {
     ResetAutoReturnTimer();
 
     if (update_timer_ != nullptr) {
-        esp_timer_start_periodic(update_timer_, 1000 * 1000); // 1 giay / lan
+        // The LTR-553 is programmed for a 200 ms repeat rate, so 1 Hz was
+        // throwing away four out of five samples for no reason. Only a handful
+        // of labels change, so the extra flushes stay tiny.
+        esp_timer_start_periodic(update_timer_, 250 * 1000);
     }
+}
+
+void SensorCardScreen::ShowRelative(int delta) {
+    if (!visible_ || screen_ == nullptr) return;
+
+    const int count = static_cast<int>(SensorCardType::kCount);
+    const int next = (static_cast<int>(current_type_) + delta + count) % count;
+
+    // Deliberately not Show(): that would overwrite main_screen_ with this
+    // very screen and strand Hide() with nowhere to go back to.
+    if (lvgl_port_lock(200)) {
+        ApplyType(static_cast<SensorCardType>(next));
+        visible_ = true;
+        lvgl_port_unlock();
+    }
+
+    UpdateData();
+    ResetAutoReturnTimer();
 }
 
 void SensorCardScreen::Hide() {

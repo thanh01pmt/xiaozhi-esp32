@@ -39,6 +39,7 @@ constexpr uint32_t kBlue = 0x2E9BFF;
 constexpr uint32_t kPurple = 0xC24BFF;
 constexpr uint32_t kYellow = 0xFFC21A;
 constexpr uint32_t kOrange = 0xFF6B35;
+constexpr uint32_t kRed = 0xFF5252;
 
 constexpr int kMargin = 4;
 constexpr int kGap = 4;
@@ -66,6 +67,7 @@ lv_obj_t* MakeCard(lv_obj_t* parent, int x, int y, int w, int h, uint32_t accent
     lv_obj_set_style_border_color(card, lv_color_hex(accent), 0);
     lv_obj_set_style_radius(card, 6, 0);
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(card, LV_OBJ_FLAG_CLICKABLE);
     return card;
 }
 
@@ -166,6 +168,45 @@ void SensorDashboardScreen::Initialize(lv_display_t* display) {
     }
 }
 
+void SensorDashboardScreen::MakeCardTappable(lv_obj_t* card, const char* sensor_type) {
+    // lv_obj_add_event_cb() takes no per-handler argument, so the sensor id
+    // travels on the card itself while user_data carries the owner.
+    lv_obj_set_user_data(card, const_cast<char*>(sensor_type));
+    lv_obj_add_event_cb(
+        card,
+        [](lv_event_t* e) {
+            auto self = static_cast<SensorDashboardScreen*>(lv_event_get_user_data(e));
+            const char* sensor_type = static_cast<const char*>(
+                lv_obj_get_user_data(static_cast<lv_obj_t*>(lv_event_get_target(e))));
+            if (self && self->open_card_ && sensor_type != nullptr) {
+                // Runs in the LVGL task, which already holds the lock;
+                // lvgl_mux is a recursive mutex so the nested lock is fine.
+                self->open_card_(sensor_type);
+            }
+        },
+        LV_EVENT_CLICKED, this);
+
+    // Press feedback. Without it a tap only does something on release, which
+    // reads as lag on a screen this size. The accent colour is left alone;
+    // only the fill and the border weight change.
+    lv_obj_add_event_cb(
+        card,
+        [](lv_event_t* e) {
+            lv_obj_t* target = static_cast<lv_obj_t*>(lv_event_get_target(e));
+            lv_obj_set_style_bg_opa(target, LV_OPA_80, 0);
+            lv_obj_set_style_border_width(target, 2, 0);
+        },
+        LV_EVENT_PRESSED, this);
+    lv_obj_add_event_cb(
+        card,
+        [](lv_event_t* e) {
+            lv_obj_t* target = static_cast<lv_obj_t*>(lv_event_get_target(e));
+            lv_obj_set_style_bg_opa(target, LV_OPA_COVER, 0);
+            lv_obj_set_style_border_width(target, 1, 0);
+        },
+        LV_EVENT_RELEASED, this);
+}
+
 void SensorDashboardScreen::CreateUI() {
     screen_ = lv_obj_create(NULL);
     lv_obj_remove_style_all(screen_);
@@ -175,6 +216,9 @@ void SensorDashboardScreen::CreateUI() {
 
     // ---------------------------------------------------------------- header
     lv_obj_t* head = MakeCard(screen_, kCol0, kRowHead, kWideW, kHeadH, kCyan);
+    // The header is the clock, not a sensor: leave it out so a tap there falls
+    // through to the background handler that goes back.
+    lv_obj_clear_flag(head, LV_OBJ_FLAG_CLICKABLE);
     MakeLabel(head, 10, 5, &lv_font_montserrat_14, kCyan, "M5STACK");
     MakeLabel(head, 10, 18, kFontMid, kText, "CORE S3");
     lv_obj_t* vline = lv_obj_create(head);
@@ -188,6 +232,7 @@ void SensorDashboardScreen::CreateUI() {
 
     // --------------------------------------------------------------- battery
     lv_obj_t* bat = MakeCard(screen_, kCol2, kRowHead, kCardW, kHeadH, kGreen);
+    MakeCardTappable(bat, "battery");
     MakeLabel(bat, 8, 5, &lv_font_montserrat_14, kGreen, "BAT");
     bat_state_ = MakeRightLabel(bat, 5, kCardW - 8, &lv_font_montserrat_14, kDim, "--");
     bat_value_ = MakeLabel(bat, 8, 21, kFontMid, kText, "--%");
@@ -195,6 +240,7 @@ void SensorDashboardScreen::CreateUI() {
 
     // ------------------------------------------------------------ temperature
     lv_obj_t* temp = MakeCard(screen_, kCol0, kRowA, kCardW, kRowBH, kOrange);
+    MakeCardTappable(temp, "temperature");
     MakeLabel(temp, 8, 5, &lv_font_montserrat_14, kOrange, "TEMP");
     temp_value_ = MakeLabel(temp, 8, 20, kFontBig, kText, "--.-");
     MakeRightLabel(temp, 34, kCardW - 8, &lv_font_montserrat_14, kDim, "C");
@@ -202,6 +248,7 @@ void SensorDashboardScreen::CreateUI() {
 
     // ------------------------------------------------------------------ IMU
     lv_obj_t* imu = MakeCard(screen_, kCol1, kRowA, kCardW, kTallH, kGreen);
+    MakeCardTappable(imu, "motion");
     MakeLabel(imu, 8, 5, kFontMid, kGreen, "IMU");
     MakeLabel(imu, 46, 9, &lv_font_montserrat_14, kDim, "ACC (g)");
     acc_value_ = MakeLabel(imu, 8, 32, &lv_font_montserrat_14, kText, "X  --.--\nY  --.--\nZ  --.--");
@@ -217,6 +264,7 @@ void SensorDashboardScreen::CreateUI() {
 
     // ----------------------------------------------------------------- light
     lv_obj_t* light = MakeCard(screen_, kCol2, kRowA, kCardW, kRowBH, kYellow);
+    MakeCardTappable(light, "light");
     MakeLabel(light, 8, 5, &lv_font_montserrat_14, kYellow, "LIGHT");
     light_value_ = MakeLabel(light, 8, 20, kFontBig, kText, "--");
     MakeRightLabel(light, 34, kCardW - 8, &lv_font_montserrat_14, kYellow, "lux");
@@ -225,6 +273,7 @@ void SensorDashboardScreen::CreateUI() {
 
     // ----------------------------------------------------------------- Wi-Fi
     lv_obj_t* wifi = MakeCard(screen_, kCol0, kRowB, kCardW, kRowBH, kBlue);
+    MakeCardTappable(wifi, "network");
     MakeLabel(wifi, 8, 5, &lv_font_montserrat_14, kBlue, "Wi-Fi");
     wifi_ssid_ = MakeLabel(wifi, 8, 22, &lv_font_montserrat_14, kText, "--");
     lv_obj_set_width(wifi_ssid_, kCardW - 16);
@@ -244,6 +293,7 @@ void SensorDashboardScreen::CreateUI() {
 
     // ---------------------------------------------------------------- system
     lv_obj_t* sys = MakeCard(screen_, kCol2, kRowB, kCardW, kRowBH, kCyan);
+    MakeCardTappable(sys, "system");
     MakeLabel(sys, 8, 5, &lv_font_montserrat_14, kCyan, "SYSTEM");
     MakeLabel(sys, 8, 24, &lv_font_montserrat_14, kDim, "SRAM");
     sys_sram_bar_ = MakeBar(sys, 8, 40, kCardW - 16, 5, kBlue);
@@ -311,9 +361,15 @@ void SensorDashboardScreen::UpdateTelemetry() {
         if (s.light.available) {
             lv_label_set_text_fmt(light_value_, "%u", static_cast<unsigned int>(s.light.lux));
             lv_label_set_text_fmt(prox_label_, "PROX %u", static_cast<unsigned int>(s.light.proximity));
+            lv_obj_set_style_text_color(light_value_, lv_color_hex(kText), 0);
+            lv_obj_set_style_text_color(prox_label_, lv_color_hex(kDim), 0);
         } else {
-            lv_label_set_text(light_value_, "--");
-            lv_label_set_text(prox_label_, "PROX --");
+            // A missing sensor used to render as "--", which is indistinguishable
+            // from a sensor that has not produced a sample yet. Say so plainly.
+            lv_label_set_text(light_value_, "ERR");
+            lv_label_set_text(prox_label_, "LTR-553 NOT FOUND");
+            lv_obj_set_style_text_color(light_value_, lv_color_hex(kRed), 0);
+            lv_obj_set_style_text_color(prox_label_, lv_color_hex(kRed), 0);
         }
         lv_bar_set_value(light_bar_, lux_pct, LV_ANIM_OFF);
 
@@ -324,10 +380,12 @@ void SensorDashboardScreen::UpdateTelemetry() {
             lv_label_set_text_fmt(gyr_value_, "X %+.2f\nY %+.2f\nZ %+.2f", s.motion.gyro_x,
                                  s.motion.gyro_y, s.motion.gyro_z);
             lv_label_set_text_fmt(posture_tilt_, "TILT %.0f DEG", s.motion.tilt_degrees);
+            lv_obj_set_style_text_color(posture_tilt_, lv_color_hex(kPurple), 0);
         } else {
             lv_label_set_text(acc_value_, "X  --.--\nY  --.--\nZ  --.--");
             lv_label_set_text(gyr_value_, "X  --.--\nY  --.--\nZ  --.--");
-            lv_label_set_text(posture_tilt_, "NO IMU");
+            lv_label_set_text(posture_tilt_, "BMI270 NOT FOUND");
+            lv_obj_set_style_text_color(posture_tilt_, lv_color_hex(kRed), 0);
         }
 
         // --- Wi-Fi ------------------------------------------------------
@@ -371,7 +429,7 @@ void SensorDashboardScreen::Show() {
     UpdateTelemetry();
 
     if (update_timer_ != nullptr) {
-        esp_timer_start_periodic(update_timer_, 1000 * 1000); // 1 giay / lan
+        esp_timer_start_periodic(update_timer_, 250 * 1000); // 4 Hz, xem sensor_card_screen.cc
     }
     if (auto_return_timer_ != nullptr) {
         esp_timer_stop(auto_return_timer_);

@@ -23,6 +23,9 @@ public:
     void Initialize(lv_display_t* display);
     void Show(SensorCardType type);
     void Hide();
+    // Move to the neighbouring card without going back to XiaoZhi, so the
+    // six screens behave like one swipeable row.
+    void ShowRelative(int delta);
     bool IsVisible() const { return visible_; }
     void UpdateData();
 

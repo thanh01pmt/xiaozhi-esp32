@@ -1214,9 +1214,11 @@ void LcdDisplay::SetEmotion(const char* emotion) {
     }
 
 #if CONFIG_USE_WECHAT_MESSAGE_STYLE
-    // In WeChat message style, if emotion is neutral, don't display it
+    // The emoji objects live on screen, i.e. on top of the conversation. Once
+    // there is something to read, keep them hidden whatever the emotion is -
+    // checking only for "neutral" let a happy face paint over the answer.
     uint32_t child_count = lv_obj_get_child_cnt(content_);
-    if (strcmp(emotion, "neutral") == 0 && child_count > 0) {
+    if (child_count > 0) {
         // Stop GIF animation if running
         if (gif_controller_) {
             gif_controller_->Stop();

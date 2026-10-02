@@ -35,6 +35,11 @@ private:
 
     lv_img_dsc_t img_dsc_{};
     uint8_t* preview_rgb_buffer_ = nullptr; // 320x240 RGB565 (153.6 KB) in PSRAM
+    // Sparse fingerprint of the last frame that was pushed to the display.
+    // A full 153.6 KB flush costs ~31 ms on the 40 MHz SPI link, so a preview
+    // aimed at something static does not need to redraw identical frames.
+    uint32_t last_frame_signature_ = 0;
+    bool has_frame_signature_ = false;
 
     std::atomic<bool> visible_{false};
     std::atomic<bool> task_running_{false};
@@ -50,6 +55,7 @@ private:
     void StopLiveStream();
     void StartLiveStream();
     void TakeStillFrame(const char* caption_prefix);
+    static uint32_t Fingerprint(const uint8_t* frame);
 
     static void StreamTask(void* arg);
     static void OnAutoExitTimeout(void* arg);

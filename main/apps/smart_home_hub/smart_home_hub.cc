@@ -2,6 +2,7 @@
 #include "mcp_tools.h"
 #include "application.h"
 #include <esp_log.h>
+#include <esp_lvgl_port.h>
 #include <cJSON.h>
 
 #define TAG "SmartHomeHub"
@@ -20,6 +21,36 @@ void SmartHomeHub::Initialize(lv_display_t* lv_display) {
         sensor_dashboard_screen_.Initialize(lv_display);
         sensor_card_screen_.Initialize(lv_display);
         camera_preview_screen_.Initialize(lv_display);
+        // A tap on a dashboard card opens that sensor's own screen. The hub
+        // stays the one place that knows how to swap screens.
+        sensor_dashboard_screen_.SetOpenCardCallback([this](const std::string& sensor_type) {
+            ShowSensorCard(sensor_type);
+        });
+
+        // One label, re-parented to whichever screen is active when it fires.
+        toast_label_ = lv_label_create(lv_screen_active());
+        lv_obj_remove_style_all(toast_label_);
+        lv_obj_set_width(toast_label_, 280);
+        lv_obj_set_style_text_align(toast_label_, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_style_text_font(toast_label_, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_color(toast_label_, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_style_bg_color(toast_label_, lv_color_hex(0x1E2A33), 0);
+        lv_obj_set_style_bg_opa(toast_label_, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(toast_label_, 1, 0);
+        lv_obj_set_style_border_color(toast_label_, lv_color_hex(0x29D3FF), 0);
+        lv_obj_set_style_radius(toast_label_, 6, 0);
+        lv_obj_set_style_pad_all(toast_label_, 6, 0);
+        lv_obj_align(toast_label_, LV_ALIGN_BOTTOM_MID, 0, -46);
+        lv_obj_add_flag(toast_label_, LV_OBJ_FLAG_HIDDEN);
+
+        esp_timer_create_args_t toast_args = {
+            .callback = &SmartHomeHub::OnToastTimeout,
+            .arg = this,
+            .dispatch_method = ESP_TIMER_TASK,
+            .name = "sh_toast",
+            .skip_unhandled_events = true,
+        };
+        esp_timer_create(&toast_args, &toast_timer_);
     }
 
     SmartHomeMcpTools::RegisterTools(this);
@@ -67,22 +98,70 @@ void SmartHomeHub::HideSensorDashboard() {
     sensor_dashboard_screen_.Hide();
 }
 
+void SmartHomeHub::OnToastTimeout(void* arg) {
+    auto hub = static_cast<SmartHomeHub*>(arg);
+    if (hub == nullptr) return;
+    // Hiding touches LVGL, so it must not run on the shared esp_timer task.
+    Application::GetInstance().Schedule([hub]() {
+        if (lvgl_port_lock(200)) {
+            if (hub->toast_label_ != nullptr) {
+                lv_obj_add_flag(hub->toast_label_, LV_OBJ_FLAG_HIDDEN);
+            }
+            lvgl_port_unlock();
+        }
+    });
+}
+
+void SmartHomeHub::ShowToast(const std::string& text) {
+    if (toast_label_ == nullptr) return;
+    if (!lvgl_port_lock(200)) return;
+
+    // Re-parent so the toast lands on the screen the user is actually looking
+    // at, whichever of the four it happens to be.
+    lv_obj_t* active = lv_screen_active();
+    if (active != nullptr && lv_obj_get_parent(toast_label_) != active) {
+        lv_obj_set_parent(toast_label_, active);
+    }
+    lv_label_set_text(toast_label_, text.c_str());
+    lv_obj_clear_flag(toast_label_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(toast_label_);
+    lvgl_port_unlock();
+
+    if (toast_timer_ != nullptr) {
+        esp_timer_stop(toast_timer_);
+        esp_timer_start_once(toast_timer_, 2500 * 1000);
+    }
+}
+
 void SmartHomeHub::ShowSensorCard(const std::string& sensor_type) {
     dashboard_screen_.Hide();
     sensor_dashboard_screen_.Hide();
     camera_preview_screen_.Hide();
 
     SensorCardType type = SensorCardType::Temperature;
+    bool matched = sensor_type == "temperature" || sensor_type == "temp" || sensor_type == "nhiet_do";
     if (sensor_type == "battery" || sensor_type == "pin" || sensor_type == "power" || sensor_type == "sac") {
         type = SensorCardType::Battery;
+        matched = true;
     } else if (sensor_type == "light" || sensor_type == "lux" || sensor_type == "anh_sang" || sensor_type == "als") {
         type = SensorCardType::Light;
+        matched = true;
     } else if (sensor_type == "motion" || sensor_type == "imu" || sensor_type == "chuyen_dong" || sensor_type == "tu_the") {
         type = SensorCardType::Motion;
+        matched = true;
     } else if (sensor_type == "network" || sensor_type == "wifi" || sensor_type == "mang") {
         type = SensorCardType::Network;
+        matched = true;
     } else if (sensor_type == "system" || sensor_type == "ram" || sensor_type == "memory" || sensor_type == "he_thong") {
         type = SensorCardType::System;
+        matched = true;
+    }
+    // Falling through to temperature silently answered a question about the
+    // battery with the wrong screen, which reads as the app ignoring the user.
+    if (!matched) {
+        ESP_LOGW(TAG, "ShowSensorCard: unknown sensor '%s', falling back to temperature",
+                 sensor_type.c_str());
+        ShowToast("Khong ro cam bien: " + sensor_type);
     }
 
     sensor_card_screen_.Show(type);
@@ -120,19 +199,32 @@ bool SmartHomeHub::SwitchScreen(const std::string& screen_name) {
     } else if (screen_name == "motion" || screen_name == "imu" || screen_name == "chuyen_dong") {
         ShowSensorCard("motion");
         return true;
+    } else if (screen_name == "network" || screen_name == "wifi" || screen_name == "mang") {
+        ShowSensorCard("network");
+        return true;
+    } else if (screen_name == "system" || screen_name == "ram" || screen_name == "he_thong") {
+        ShowSensorCard("system");
+        return true;
     } else if (screen_name == "smarthome" || screen_name == "home" || screen_name == "dashboard" || screen_name == "nha_thong_minh") {
         ShowDashboard();
         return true;
     } else if (screen_name == "camera" || screen_name == "may_anh" || screen_name == "chup_hinh" || screen_name == "cam" || screen_name == "live" || screen_name == "xem_truoc") {
         ShowCameraPreview();
         return true;
-    } else if (screen_name == "main" || screen_name == "xiaozhi" || screen_name == "chinh" || screen_name == "tro_ly") {
+    } else if (screen_name == "main" || screen_name == "xiaozhi" || screen_name == "chinh" ||
+               screen_name == "tro_ly" || screen_name == "chat" || screen_name == "default" ||
+               screen_name == "mac_dinh" || screen_name == "quay_lai" || screen_name == "man_hinh_chat") {
         HideDashboard();
         HideSensorDashboard();
         HideSensorCard();
         HideCameraPreview();
         return true;
     }
+
+    // Only an unknown name gets a toast: a successful switch is already
+    // visible, so confirming it out loud would just be noise.
+    ESP_LOGW(TAG, "SwitchScreen: unknown screen '%s'", screen_name.c_str());
+    ShowToast("Khong co man hinh: " + screen_name);
     return false;
 }
 
@@ -162,6 +254,29 @@ std::string SmartHomeHub::ListScreensJson() {
     cJSON_AddStringToObject(s4, "name", "Màn hình Xem trước Camera Trực tiếp (Live Camera Preview)");
     cJSON_AddStringToObject(s4, "description", "Mở chế độ xem trước video camera trực tiếp (real-time live stream) trước khi chụp ảnh hoặc hỏi AI.");
     cJSON_AddItemToArray(root, s4);
+
+    // The six single-sensor cards. Without these the model has no way to know
+    // they exist, so asking about one sensor only ever reached "sensors".
+    struct CardScreen {
+        const char* id;
+        const char* name;
+        const char* description;
+    };
+    static const CardScreen kCards[] = {
+        {"temperature", "Màn hình Nhiệt độ", "Thẻ đơn nhiệt độ bo mạch theo thời gian thực."},
+        {"battery", "Màn hình Pin & Sạc", "Thẻ đơn mức pin, trạng thái sạc và nhiệt độ."},
+        {"light", "Màn hình Ánh sáng", "Thẻ đơn cường độ ánh sáng (Lux) và cảm biến tiếm cận."},
+        {"motion", "Màn hình Cảm biến IMU", "Thẻ đơn gia tốc, con quay 6 trục và góc nghiêng máy."},
+        {"network", "Màn hình Wi-Fi", "Thẻ đơn SSID, địa chỉ IP, cường độ tín hiệu."},
+        {"system", "Màn hình Hệ thống", "Thẻ đơn RAM, PSRAM, tần số CPU và thời gian hoạt động."},
+    };
+    for (const CardScreen& card : kCards) {
+        cJSON* entry = cJSON_CreateObject();
+        cJSON_AddStringToObject(entry, "id", card.id);
+        cJSON_AddStringToObject(entry, "name", card.name);
+        cJSON_AddStringToObject(entry, "description", card.description);
+        cJSON_AddItemToArray(root, entry);
+    }
 
     char* str = cJSON_PrintUnformatted(root);
     std::string res = str ? str : "[]";

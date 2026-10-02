@@ -237,6 +237,9 @@ void CameraPreviewScreen::OnExternalPhotoCaptured() {
 
 void CameraPreviewScreen::TakeStillFrame(const char* caption_prefix) {
     StopLiveStream();
+    // The still frame is written straight into the preview buffer, so the old
+    // fingerprint no longer describes what is on screen.
+    has_frame_signature_ = false;
 
     char stamp[64] = {0};
     time_t now = time(nullptr);
@@ -281,6 +284,19 @@ void CameraPreviewScreen::TakeStillFrame(const char* caption_prefix) {
     ResetAutoExitTimer();
 }
 
+uint32_t CameraPreviewScreen::Fingerprint(const uint8_t* frame) {
+    // Sample ~256 pixels spread across the frame instead of hashing all
+    // 153.6 KB. Cheap enough to run every frame, and a real scene change
+    // always moves at least a few of these.
+    uint32_t hash = 2166136261u;
+    constexpr size_t kStride = 600;
+    for (size_t offset = 0; offset < FRAME_BUFFER_SIZE; offset += kStride) {
+        hash ^= frame[offset];
+        hash *= 16777619u;
+    }
+    return hash;
+}
+
 void CameraPreviewScreen::StreamTask(void* arg) {
     auto self = static_cast<CameraPreviewScreen*>(arg);
     auto camera = Board::GetInstance().GetCamera();
@@ -294,6 +310,16 @@ void CameraPreviewScreen::StreamTask(void* arg) {
         if (camera != nullptr && self->preview_rgb_buffer_ != nullptr) {
             uint16_t w = 0, h = 0;
             if (camera->CapturePreviewFrame(self->preview_rgb_buffer_, FRAME_BUFFER_SIZE, w, h)) {
+                const uint32_t signature = Fingerprint(self->preview_rgb_buffer_);
+                const bool changed = !self->has_frame_signature_ || signature != self->last_frame_signature_;
+                self->last_frame_signature_ = signature;
+                self->has_frame_signature_ = true;
+                if (!changed) {
+                    // Same picture: skip the invalidate and keep the link free.
+                    vTaskDelay(pdMS_TO_TICKS(66));
+                    continue;
+                }
+
                 frame_count++;
                 int64_t now = esp_timer_get_time();
                 if (now - last_fps_time >= 2000000LL) { // Every 2s update FPS

@@ -77,7 +77,7 @@ void SmartHomeMcpTools::RegisterTools(SmartHomeHub* hub) {
 
     // 6. Tool liet ke danh sach tat ca man hinh co the mo tren thiet bi
     mcp.AddTool("ui.list_screens",
-        "Liệt kê tất cả các màn hình có thể chuyển đổi trên thiết bị (main: Trợ lý AI chính, sensors: Thông số cảm biến & phần cứng, smarthome: Điều khiển nhà thông minh, camera: Chụp ảnh hoặc quan sát camera).",
+        "Liệt kê tất cả các màn hình có thể chuyển đổi trên thiết bị: main/chat (trợ lý AI chính), sensors (bảng tổng quan cảm biến), sáu màn hình đơn cho từng cảm biến (temperature, battery, light, motion, network, system), smarthome (điều khiển nhà thông minh) và camera (xem trước camera).",
         PropertyList(),
         [hub](const PropertyList& props) -> ReturnValue {
             return hub->ListScreensJson();
@@ -85,28 +85,23 @@ void SmartHomeMcpTools::RegisterTools(SmartHomeHub* hub) {
 
     // 7. Tool chuyen doi man hinh theo yeu cau cua nguoi dung
     mcp.AddTool("ui.switch_screen",
-        "Chuyển đổi giao diện màn hình trên thiết bị theo yêu cầu. Dùng 'main' để quay lại màn hình trợ lý chính.\n"
-        "screen_name: Tên màn hình cần chuyển ('main', 'sensors', 'smarthome', hoặc 'camera').",
+        "Chuyển đổi giao diện màn hình trên thiết bị theo yêu cầu.\n"
+        "screen_name: Tên màn hình cần chuyển:\n"
+        "  - 'main' (hoặc 'chat'): màn hình chat/trợ lý mặc định.\n"
+        "  - 'temperature', 'battery', 'light', 'motion', 'network', 'system': màn hình đơn của một cảm biến, dùng khi người dùng hỏi về đúng cảm biến đó.\n"
+        "  - 'sensors': bảng tổng quan tất cả cảm biến.\n"
+        "  - 'smarthome': bảng điều khiển nhà thông minh.\n"
+        "  - 'camera': xem trước camera trực tiếp.",
         PropertyList({
             Property("screen_name", kPropertyTypeString)
         }),
         [hub](const PropertyList& props) -> ReturnValue {
             std::string name = props["screen_name"].value<std::string>();
             ESP_LOGI(TAG, "MCP Tool ui.switch_screen: %s", name.c_str());
-            // Validate up front so an unknown name is reported instead of a silent no-op.
-            static const char* kScreens[] = {"main", "sensors", "smarthome", "camera"};
-            bool known = false;
-            for (const char* id : kScreens) {
-                if (name == id) {
-                    known = true;
-                    break;
-                }
-            }
-            if (!known) {
-                ESP_LOGW(TAG, "ui.switch_screen: unknown screen '%s'", name.c_str());
-                return std::string("Unknown screen '") + name +
-                       "'. Valid screens: main, sensors, smarthome, camera.";
-            }
+            // SmartHomeHub::SwitchScreen owns the screen list. Duplicating it
+            // here used to reject the sensor cards the hub already supported.
+            // It returns before the queued job runs, so the result cannot be
+            // reported back; SwitchScreen logs the unknown name itself.
             Application::GetInstance().Schedule([hub, name]() {
                 hub->SwitchScreen(name);
             });
@@ -124,7 +119,8 @@ void SmartHomeMcpTools::RegisterTools(SmartHomeHub* hub) {
     // 9. Tool doc chuyen sau tung loai cam bien
     mcp.AddTool("sensor.get_sensor_data",
         "Đọc thông số chi tiết của một loại cảm biến cụ thể trên thiết bị và đồng thời hiển thị thẻ thông số nổi bật của cảm biến đó lên màn hình.\n"
-        "sensor_type: Loại cảm biến cần đọc ('battery', 'temperature', 'light', 'motion', 'network', 'system').",
+        "Dùng tool này khi người dùng hỏi về một cảm biến cụ thể, ví dụ 'nhiệt độ bao nhiêu', 'pin còn bao nhiêu', 'ánh sáng có sáng không'.\n"
+        "sensor_type: Loại cảm biến cần đọc ('temperature', 'battery', 'light', 'motion', 'network', 'system').",
         PropertyList({
             Property("sensor_type", kPropertyTypeString)
         }),

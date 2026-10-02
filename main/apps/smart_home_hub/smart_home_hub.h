@@ -38,6 +38,11 @@ public:
     bool SwitchScreen(const std::string& screen_name);
     std::string ListScreensJson();
 
+    // Short confirmation on whatever screen is active, then fades out. Used for
+    // actions whose result is otherwise invisible: a refused screen name, a
+    // sensor the tool could not read.
+    void ShowToast(const std::string& text);
+
     bool SetDeviceState(const std::string& device_id, bool turn_on);
     bool SetDeviceLevel(const std::string& device_id, int level);
     bool TriggerScene(const std::string& scene_name);
@@ -54,6 +59,8 @@ private:
     SmartHomeHub();
     ~SmartHomeHub() = default;
 
+    static void OnToastTimeout(void* arg);
+
     bool initialized_ = false;
     SmartHomeNetworkClient network_client_;
     SmartHomeBleController ble_controller_;
@@ -63,6 +70,9 @@ private:
     CameraPreviewScreen camera_preview_screen_;
     WebConfigServer web_server_;
     std::vector<SmartDevice> devices_;
+
+    lv_obj_t* toast_label_ = nullptr;
+    esp_timer_handle_t toast_timer_ = nullptr;
 
     void LoadDevices();
 };

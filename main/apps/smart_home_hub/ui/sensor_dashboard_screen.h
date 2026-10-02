@@ -3,13 +3,19 @@
 
 #include <lvgl.h>
 #include <esp_timer.h>
+#include <functional>
+#include <string>
 
 class SensorDashboardScreen {
 public:
+    // Opened by a tap on one of the six cards; the owner maps the id to a screen.
+    using OpenCardCallback = std::function<void(const std::string& sensor_type)>;
+
     SensorDashboardScreen();
     ~SensorDashboardScreen();
 
     void Initialize(lv_display_t* display);
+    void SetOpenCardCallback(OpenCardCallback callback) { open_card_ = std::move(callback); }
     void Show();
     void Hide();
     bool IsVisible() const { return visible_; }
@@ -17,10 +23,12 @@ public:
 
 private:
     void CreateUI();
+    void MakeCardTappable(lv_obj_t* card, const char* sensor_type);
     static void OnUpdateTimer(void* arg);
     static void OnAutoReturnTimeout(void* arg);
 
     lv_display_t* display_ = nullptr;
+    OpenCardCallback open_card_;
     lv_obj_t* main_screen_ = nullptr;
     lv_obj_t* screen_ = nullptr;
 
