@@ -20,7 +20,7 @@ Mọi quy ước về tạo, đặt tên và cấu trúc tài liệu tuân thủ
 ### 2. Quyết Định Kiến Trúc (ADRs)
 
 ### 3. Kế Hoạch Thực Thi (Plans)
-- [2026-10-02: Kế Hoạch Tối Ưu Hiệu Năng và Hoàn Thiện Tích Hợp M5Stack CoreS3](./plans/2026-10-02-m5stack-core-s3-performance-optimization-plan.md) *(Draft)*
+- [2026-10-02: Kế Hoạch Tối Ưu Hiệu Năng và Hoàn Thiện Tích Hợp M5Stack CoreS3](./plans/2026-10-02-m5stack-core-s3-performance-optimization-plan.md) *(Active)*
 
 ### 4. Phân Tích & Nghiên Cứu (Analysis)
 - [2026-10-02: Đánh Giá Phần Cứng và Phân Tích Hiệu Năng Đồng Thời trên M5Stack CoreS3](./analysis/2026-10-02/2026-10-02-m5stack-core-s3-hardware-performance-audit.md) *(Final)*

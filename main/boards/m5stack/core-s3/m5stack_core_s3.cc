@@ -14,6 +14,8 @@
 #include <esp_lcd_ili9341.h>
 #include <esp_timer.h>
 #include "esp_video.h"
+#include <esp_lcd_touch_ft5x06.h>
+#include <esp_lvgl_port.h>
 
 #define TAG "M5StackCoreS3Board"
 
@@ -212,21 +214,77 @@ private:
             
             // 只有短触才触发
             if (touch_duration < TOUCH_THRESHOLD_MS) {
-                auto& app = Application::GetInstance();
-                if (app.GetDeviceState() == kDeviceStateStarting) {
-                    EnterWifiConfigMode();
-                    return;
-                }
-                app.ToggleChatState();
+                Application::GetInstance().Schedule([this]() {
+                    auto& app = Application::GetInstance();
+                    if (app.GetDeviceState() == kDeviceStateStarting) {
+                        EnterWifiConfigMode();
+                        return;
+                    }
+                    app.ToggleChatState();
+                });
             }
+        }
+    }
+
+    void InitializeLvglTouch() {
+        esp_lcd_touch_config_t tp_cfg = {
+            .x_max = DISPLAY_WIDTH,
+            .y_max = DISPLAY_HEIGHT,
+            .rst_gpio_num = GPIO_NUM_NC,
+            .int_gpio_num = GPIO_NUM_NC,
+            .levels = {
+                .reset = 0,
+                .interrupt = 0,
+            },
+            .flags = {
+                .swap_xy = DISPLAY_SWAP_XY,
+                .mirror_x = DISPLAY_MIRROR_X,
+                .mirror_y = DISPLAY_MIRROR_Y,
+            },
+        };
+        esp_lcd_panel_io_handle_t tp_io_handle = NULL;
+        esp_lcd_panel_io_i2c_config_t tp_io_config = {
+            .dev_addr = ESP_LCD_TOUCH_IO_I2C_FT5x06_ADDRESS,
+            .control_phase_bytes = 1,
+            .dc_bit_offset = 0,
+            .lcd_cmd_bits = 8,
+            .flags = {
+                .disable_control_phase = 1,
+            },
+            .scl_speed_hz = 400000,
+        };
+        esp_err_t err = esp_lcd_new_panel_io_i2c(i2c_bus_, &tp_io_config, &tp_io_handle);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "Failed to create touch panel IO: %s", esp_err_to_name(err));
+            return;
+        }
+
+        esp_lcd_touch_handle_t tp = nullptr;
+        err = esp_lcd_touch_new_i2c_ft5x06(tp_io_handle, &tp_cfg, &tp);
+        if (err != ESP_OK || tp == nullptr) {
+            ESP_LOGW(TAG, "FT5x06 touch controller init failed: %s", esp_err_to_name(err));
+            esp_lcd_panel_io_del(tp_io_handle);
+            return;
+        }
+
+        const lvgl_port_touch_cfg_t touch_cfg = {
+            .disp = lv_display_get_default(),
+            .handle = tp,
+        };
+        if (touch_cfg.disp != nullptr) {
+            lvgl_port_add_touch(&touch_cfg);
+            ESP_LOGI(TAG, "FT5x06 touch registered with LVGL");
+        } else {
+            ESP_LOGW(TAG, "LVGL display not ready for touch registration");
         }
     }
 
     void InitializeFt6336TouchPad() {
         ESP_LOGI(TAG, "Init FT6336");
         ft6336_ = new Ft6336(i2c_bus_, 0x38);
+        InitializeLvglTouch();
         
-        // 创建定时器，20ms 间隔
+        // 创建定时器，40ms 间隔 (25Hz) 降低 I2C 占用
         esp_timer_create_args_t timer_args = {
             .callback = [](void* arg) {
                 M5StackCoreS3Board* board = (M5StackCoreS3Board*)arg;
@@ -239,7 +297,7 @@ private:
         };
         
         ESP_ERROR_CHECK(esp_timer_create(&timer_args, &touchpad_timer_));
-        ESP_ERROR_CHECK(esp_timer_start_periodic(touchpad_timer_, 20 * 1000));
+        ESP_ERROR_CHECK(esp_timer_start_periodic(touchpad_timer_, 40 * 1000));
     }
 
     void InitializeSpi() {
