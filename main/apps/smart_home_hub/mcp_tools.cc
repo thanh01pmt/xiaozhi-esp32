@@ -56,12 +56,24 @@ void SmartHomeMcpTools::RegisterTools(SmartHomeHub* hub) {
             return success;
         });
 
-    // 4. Tool lay trang thai thiet bi
+    // 4. Tool lay danh sach va trang thai thiet bi (dong thoi hien thi len man hinh)
     mcp.AddTool("smarthome.get_device_status",
-        "Lấy danh sách và trạng thái hiện tại của các thiết bị trong nhà thông minh.",
+        "Lấy danh sách và trạng thái hiện tại của tất cả các thiết bị trong nhà thông minh, đồng thời tự động mở giao diện điều khiển lên màn hình CoreS3.",
         PropertyList(),
         [hub](const PropertyList& props) -> ReturnValue {
+            Application::GetInstance().Schedule([hub]() {
+                hub->ShowDashboard();
+            });
             return hub->GetDeviceStatusJson();
+        });
+
+    // 4b. Tool dong bo thiet bi tu Home Assistant
+    mcp.AddTool("smarthome.sync_devices",
+        "Đồng bộ danh sách tất cả các thiết bị và công tắc từ máy chủ Home Assistant về thiết bị.",
+        PropertyList(),
+        [hub](const PropertyList& props) -> ReturnValue {
+            bool ok = hub->SyncDevicesFromHomeAssistant();
+            return ok ? "Đã đồng bộ thành công danh sách thiết bị từ Home Assistant!" : "Đồng bộ thất bại, vui lòng kiểm tra kết nối Home Assistant.";
         });
 
     // 5. Tool hien thi man hinh dieu khien Dashboard tren man hinh CoreS3

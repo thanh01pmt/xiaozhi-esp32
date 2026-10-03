@@ -158,6 +158,7 @@ void WifiBoard::OnNetworkEvent(NetworkEvent event, const std::string& data) {
             ESP_LOGI(TAG, "Connected to WiFi: %s", data.c_str());
 #if CONFIG_ENABLE_SMART_HOME_HUB
             SmartHomeHub::GetInstance().GetWebServer().Start();
+            SmartHomeHub::GetInstance().SyncDevicesFromHomeAssistant();
 #endif
             break;
         case NetworkEvent::Scanning:

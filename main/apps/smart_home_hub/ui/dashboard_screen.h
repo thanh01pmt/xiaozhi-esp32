@@ -12,11 +12,15 @@ public:
     DashboardScreen();
     ~DashboardScreen();
 
+    using DeviceToggleCallback = std::function<void(const std::string& device_id, bool new_state)>;
+
     void Initialize(lv_display_t* display);
+    void SetToggleCallback(DeviceToggleCallback cb) { toggle_cb_ = std::move(cb); }
     void Show();
     void Hide();
     bool IsVisible() const { return is_visible_; }
     void UpdateDeviceState(const SmartDevice& device);
+    void ReloadDevices(const std::vector<SmartDevice>& devices);
 
 private:
     lv_display_t* display_ = nullptr;
@@ -26,6 +30,8 @@ private:
     lv_obj_t* grid_container_ = nullptr;
     bool is_visible_ = false;
     esp_timer_handle_t auto_return_timer_ = nullptr;
+    DeviceToggleCallback toggle_cb_;
+    std::vector<SmartDevice> current_devices_;
 
     void CreateUI();
     void ResetAutoReturnTimer();

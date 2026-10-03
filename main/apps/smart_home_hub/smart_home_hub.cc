@@ -1,6 +1,7 @@
 #include "smart_home_hub.h"
 #include "mcp_tools.h"
 #include "application.h"
+#include "settings.h"
 #include <esp_log.h>
 #include <esp_lvgl_port.h>
 #include <cJSON.h>
@@ -13,11 +14,15 @@ void SmartHomeHub::Initialize(lv_display_t* lv_display) {
     if (initialized_) return;
     ESP_LOGI(TAG, "Initializing SmartHomeHub on CoreS3");
 
+    LoadHomeAssistantConfig();
     LoadDevices();
     ble_controller_.Initialize();
 
     if (lv_display != nullptr) {
         dashboard_screen_.Initialize(lv_display);
+        dashboard_screen_.SetToggleCallback([this](const std::string& dev_id, bool state) {
+            SetDeviceState(dev_id, state);
+        });
         sensor_dashboard_screen_.Initialize(lv_display);
         sensor_card_screen_.Initialize(lv_display);
         camera_preview_screen_.Initialize(lv_display);
@@ -80,6 +85,7 @@ void SmartHomeHub::ShowDashboard() {
     sensor_dashboard_screen_.Hide();
     sensor_card_screen_.Hide();
     camera_preview_screen_.Hide();
+    dashboard_screen_.ReloadDevices(devices_);
     dashboard_screen_.Show();
 }
 
@@ -287,14 +293,37 @@ std::string SmartHomeHub::ListScreensJson() {
 
 bool SmartHomeHub::SetDeviceState(const std::string& device_id, bool turn_on) {
     ESP_LOGI(TAG, "SetDeviceState: %s -> %d", device_id.c_str(), turn_on);
+    std::string target_id = device_id;
+
+    // Check if device_id matches an id or friendly name in discovered devices
     for (auto& dev : devices_) {
         if (dev.id == device_id || dev.name == device_id) {
             dev.state = turn_on;
+            target_id = dev.id;
             dashboard_screen_.UpdateDeviceState(dev);
             break;
         }
     }
-    return network_client_.SendSwitchCommand(device_id, turn_on);
+
+    // If only one switch/light exists in devices_ and user calls generic name like "den" or "den_phong_khach"
+    if (target_id == device_id && devices_.size() == 1) {
+        target_id = devices_[0].id;
+        devices_[0].state = turn_on;
+        dashboard_screen_.UpdateDeviceState(devices_[0]);
+    } else if (target_id == device_id) {
+        // Look for partial match
+        for (auto& dev : devices_) {
+            if (dev.id.find(device_id) != std::string::npos ||
+                dev.name.find(device_id) != std::string::npos) {
+                target_id = dev.id;
+                dev.state = turn_on;
+                dashboard_screen_.UpdateDeviceState(dev);
+                break;
+            }
+        }
+    }
+
+    return network_client_.SendSwitchCommand(target_id, turn_on);
 }
 
 bool SmartHomeHub::SetDeviceLevel(const std::string& device_id, int level) {
@@ -333,4 +362,45 @@ std::string SmartHomeHub::GetDeviceStatusJson() {
     if (printed) free(printed);
     cJSON_Delete(root);
     return result;
+}
+
+void SmartHomeHub::LoadHomeAssistantConfig() {
+    Settings settings("smarthome", false);
+    std::string url = settings.GetString("ha_url", "");
+    std::string token = settings.GetString("ha_token", "");
+    if (!url.empty()) {
+        network_client_.SetHomeAssistantConfig(url, token);
+        ESP_LOGI(TAG, "Loaded Home Assistant configuration from NVS: %s", url.c_str());
+    } else {
+        ESP_LOGI(TAG, "No Home Assistant configuration found in NVS");
+    }
+}
+
+void SmartHomeHub::SaveHomeAssistantConfig(const std::string& base_url, const std::string& access_token) {
+    Settings settings("smarthome", true);
+    settings.SetString("ha_url", base_url);
+    settings.SetString("ha_token", access_token);
+    network_client_.SetHomeAssistantConfig(base_url, access_token);
+    ESP_LOGI(TAG, "Saved Home Assistant configuration to NVS: %s", base_url.c_str());
+    SyncDevicesFromHomeAssistant();
+}
+
+bool SmartHomeHub::SyncDevicesFromHomeAssistant() {
+    xTaskCreate([](void* arg) {
+        auto self = static_cast<SmartHomeHub*>(arg);
+        std::vector<SmartDevice> ha_devices;
+        bool success = self->network_client_.FetchEntitiesFromHomeAssistant(ha_devices);
+        if (success && !ha_devices.empty()) {
+            self->devices_ = std::move(ha_devices);
+            ESP_LOGI(TAG, "SyncDevicesFromHomeAssistant: successfully updated %u devices",
+                     (unsigned)self->devices_.size());
+            Application::GetInstance().Schedule([self]() {
+                self->dashboard_screen_.ReloadDevices(self->devices_);
+            });
+        } else {
+            ESP_LOGW(TAG, "SyncDevicesFromHomeAssistant failed or returned 0 devices");
+        }
+        vTaskDelete(NULL);
+    }, "ha_sync_task", 8192, this, 3, NULL);
+    return true;
 }

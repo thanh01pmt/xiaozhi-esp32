@@ -18,7 +18,9 @@ private:
     httpd_handle_t server_handle_ = nullptr;
 
     static esp_err_t IndexGetHandler(httpd_req_t* req);
+    static esp_err_t ConfigGetHandler(httpd_req_t* req);
     static esp_err_t ConfigPostHandler(httpd_req_t* req);
+    static esp_err_t SyncPostHandler(httpd_req_t* req);
     static esp_err_t ApiStatusGetHandler(httpd_req_t* req);
 };
 

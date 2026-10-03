@@ -48,6 +48,12 @@ public:
     bool TriggerScene(const std::string& scene_name);
     std::string GetDeviceStatusJson();
 
+    void LoadHomeAssistantConfig();
+    void SaveHomeAssistantConfig(const std::string& base_url, const std::string& access_token);
+    bool SyncDevicesFromHomeAssistant();
+
+    const std::vector<SmartDevice>& GetDevices() const { return devices_; }
+    DashboardScreen& GetDashboardScreen() { return dashboard_screen_; }
     SensorDashboardScreen& GetSensorDashboard() { return sensor_dashboard_screen_; }
     SensorCardScreen& GetSensorCard() { return sensor_card_screen_; }
     CameraPreviewScreen& GetCameraPreview() { return camera_preview_screen_; }
