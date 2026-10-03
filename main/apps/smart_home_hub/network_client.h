@@ -16,6 +16,8 @@ public:
     bool TestConnection(std::string* out_message = nullptr);
     bool SendSwitchCommand(const std::string& entity_id, bool turn_on);
     bool SendLevelCommand(const std::string& entity_id, int level);
+    bool SendMediaPlayCommand(const std::string& entity_id, const std::string& media_content_id, const std::string& media_content_type);
+    bool SendMediaStopCommand(const std::string& entity_id);
     bool TriggerScene(const std::string& scene_name);
     bool FetchEntitiesFromHomeAssistant(std::vector<SmartDevice>& out_devices);
     bool FetchDeviceStatus(const std::string& entity_id, SmartDevice& out_device);

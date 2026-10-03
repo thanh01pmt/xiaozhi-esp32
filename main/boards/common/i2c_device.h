@@ -16,6 +16,7 @@ protected:
     void WriteRegs(uint8_t reg, const uint8_t* buffer, size_t length);
     uint8_t ReadReg(uint8_t reg);
     void ReadRegs(uint8_t reg, uint8_t* buffer, size_t length);
+    esp_err_t TryReadRegs(uint8_t reg, uint8_t* buffer, size_t length, int timeout_ms = 50);
     esp_err_t ResetBus(const char* reason);
 };
 

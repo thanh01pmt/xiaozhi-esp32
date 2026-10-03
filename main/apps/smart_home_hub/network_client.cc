@@ -175,6 +175,19 @@ bool SmartHomeNetworkClient::SendLevelCommand(const std::string& entity_id, int 
     return PostHttpRequest(endpoint, payload);
 }
 
+bool SmartHomeNetworkClient::SendMediaPlayCommand(const std::string& entity_id, const std::string& media_content_id, const std::string& media_content_type) {
+    std::string endpoint = "/api/services/media_player/play_media";
+    std::string payload = "{\"entity_id\":\"" + entity_id + "\",\"media_content_id\":\"" +
+                          media_content_id + "\",\"media_content_type\":\"" + media_content_type + "\"}";
+    return PostHttpRequest(endpoint, payload);
+}
+
+bool SmartHomeNetworkClient::SendMediaStopCommand(const std::string& entity_id) {
+    std::string endpoint = "/api/services/media_player/media_stop";
+    std::string payload = "{\"entity_id\":\"" + entity_id + "\"}";
+    return PostHttpRequest(endpoint, payload);
+}
+
 bool SmartHomeNetworkClient::TriggerScene(const std::string& scene_name) {
     std::string endpoint = "/api/services/scene/turn_on";
     std::string payload = "{\"entity_id\":\"scene." + scene_name + "\"}";

@@ -108,7 +108,10 @@ public:
     }
 
     void UpdateTouchPoint() {
-        ReadRegs(0x02, read_buffer_, 6);
+        if (TryReadRegs(0x02, read_buffer_, 6, 20) != ESP_OK) {
+            tp_.num = 0;
+            return;
+        }
         tp_.num = read_buffer_[0] & 0x0F;
         tp_.x = ((read_buffer_[1] & 0x0F) << 8) | read_buffer_[2];
         tp_.y = ((read_buffer_[3] & 0x0F) << 8) | read_buffer_[4];

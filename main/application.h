@@ -108,6 +108,9 @@ public:
      */
     void StopListening();
 
+    void StartNotification(std::string audio_url, std::vector<NotifySubtitle> subtitles);
+    void StopNotification();
+
     void Reboot();
     void WakeWordInvoke(const std::string& wake_word);
     bool UpgradeFirmware(const std::string& url, const std::string& version = "");
@@ -169,8 +172,6 @@ private:
     void ContinueWakeWordInvoke(const std::string& wake_word);
     void StartListeningAudio();
     void ConfigureWakeWordForListening();
-    void StartNotification(std::string audio_url, std::vector<NotifySubtitle> subtitles);
-    void StopNotification();
     void HandleNotificationFinished(uint32_t playback_id, bool success);
 
     // Activation task (runs in background)

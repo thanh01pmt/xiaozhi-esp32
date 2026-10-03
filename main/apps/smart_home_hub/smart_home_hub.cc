@@ -2,6 +2,8 @@
 #include "mcp_tools.h"
 #include "application.h"
 #include "settings.h"
+#include "board.h"
+#include "audio_codec.h"
 #include <esp_log.h>
 #include <esp_lvgl_port.h>
 #include <cJSON.h>
@@ -403,4 +405,49 @@ bool SmartHomeHub::SyncDevicesFromHomeAssistant() {
         vTaskDelete(NULL);
     }, "ha_sync_task", 8192, this, 3, NULL);
     return true;
+}
+
+bool SmartHomeHub::PlayAudioStream(const std::string& url, const std::string& title) {
+    ESP_LOGI(TAG, "PlayAudioStream: %s (%s)", title.c_str(), url.c_str());
+    ShowToast("Đang phát (80%): " + title);
+
+    Application::GetInstance().Schedule([url, title]() mutable {
+        auto& app = Application::GetInstance();
+        // Tự động nâng âm lượng loa lên 80% khi phát nhạc / radio
+        auto codec = Board::GetInstance().GetAudioCodec();
+        if (codec) {
+            codec->SetOutputVolume(80);
+            ESP_LOGI(TAG, "Default music volume set to 80%%");
+        }
+
+        // Ngat loi noi cua AI va chuyen ve Idle de NotifyPlayer chap nhan stream
+        app.AbortSpeaking(kAbortReasonNone);
+        app.SetDeviceState(kDeviceStateIdle);
+
+        std::vector<NotifySubtitle> subtitles;
+        subtitles.push_back({.start_ms = 0, .text = "🎵 " + title});
+        app.StartNotification(std::move(url), std::move(subtitles));
+    });
+
+    return true;
+}
+
+bool SmartHomeHub::StopAudioStream() {
+    ESP_LOGI(TAG, "StopAudioStream requested");
+    Application::GetInstance().StopNotification();
+    ShowToast("Đã dừng phát");
+    return true;
+}
+
+bool SmartHomeHub::PlayHomeAssistantMedia(const std::string& entity_id, const std::string& media_url, const std::string& media_type) {
+    ESP_LOGI(TAG, "PlayHomeAssistantMedia: entity=%s url=%s type=%s",
+             entity_id.c_str(), media_url.c_str(), media_type.c_str());
+    ShowToast("Phát qua HA: " + entity_id);
+    return network_client_.SendMediaPlayCommand(entity_id, media_url, media_type);
+}
+
+bool SmartHomeHub::StopHomeAssistantMedia(const std::string& entity_id) {
+    ESP_LOGI(TAG, "StopHomeAssistantMedia: entity=%s", entity_id.c_str());
+    ShowToast("Dừng phát HA");
+    return network_client_.SendMediaStopCommand(entity_id);
 }

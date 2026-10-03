@@ -148,5 +148,119 @@ void SmartHomeMcpTools::RegisterTools(SmartHomeHub* hub) {
             return SensorMonitor::GetInstance().GetSensorDataJson(type);
         });
 
-    ESP_LOGI(TAG, "Smart Home, UI Navigation & Sensor MCP tools successfully registered");
+    // 10. Tool phat nhac YouTube / YouTube Music truc tiep tren loa thiet bi
+    mcp.AddTool("media.play_youtube",
+        "Tìm kiếm và phát bài hát từ YouTube / YouTube Music trực tiếp trên loa thiết bị ở mức âm lượng 80%.\n"
+        "BẮT BUỘC gọi công cụ này khi người dùng yêu cầu: 'bật bài [tên bài]', 'nghe bài [tên bài]', 'tìm bài [tên bài]', 'phát nhạc [tên bài]', 'mở nhạc [tên bài]', 'nghe ca khúc [tên bài]'.\n"
+        "query: Tên bài hát, ca khúc hoặc kèm ca sĩ (ví dụ: 'Lạc Trôi', 'Cơn mưa ngang qua Sơn Tùng', 'Nơi này có anh', 'Shape of You').",
+        PropertyList({
+            Property("query", kPropertyTypeString)
+        }),
+        [hub](const PropertyList& props) -> ReturnValue {
+            std::string q = props["query"].value<std::string>();
+            ESP_LOGI(TAG, "MCP Tool media.play_youtube: %s", q.c_str());
+
+            // URL encode query
+            std::string encoded_q = "";
+            char hex_buf[4];
+            for (char c : q) {
+                if (isalnum((unsigned char)c) || c == '-' || c == '_' || c == '.' || c == '~') {
+                    encoded_q += c;
+                } else if (c == ' ') {
+                    encoded_q += "+";
+                } else {
+                    snprintf(hex_buf, sizeof(hex_buf), "%%%02X", (unsigned char)c);
+                    encoded_q += hex_buf;
+                }
+            }
+
+            std::string url = "https://ha.orchable.app/api/audio_gateway/stream?q=" + encoded_q;
+            std::string title = "YouTube: " + q;
+            bool ok = hub->PlayAudioStream(url, title);
+            return ok ? ("Đang tìm kiếm và phát bài hát '" + q + "' từ YouTube Music với âm lượng 80%") : "Không thể phát nhạc từ YouTube Music";
+        });
+
+    // 11. Tool phat kenh Radio / Am nhac tieng Viet
+    mcp.AddTool("media.play_vietnam_radio",
+        "Phát các kênh Radio / Tin tức / Âm nhạc trực tuyến tiếng Việt (VOV) trực tiếp trên loa thiết bị ở mức âm lượng 80%.\n"
+        "Gọi công cụ này khi người dùng yêu cầu 'nghe radio', 'bật đài', 'bật VOV', 'nghe VOV giao thông'.\n"
+        "station: Tên kênh cần nghe:\n"
+        "  - 'vov_giaothong': VOV Giao thông Hà Nội (Tin giao thông, ca nhạc Việt Nam, tin tức)\n"
+        "  - 'vov_giaothong_hcm': VOV Giao thông TP.HCM (Ca nhạc, thông tin đô thị)\n"
+        "  - 'vov1': VOV1 Thời sự - Chính trị tổng hợp\n"
+        "  - 'vov3': VOV3 Âm nhạc & Giải trí",
+        PropertyList({
+            Property("station", kPropertyTypeString)
+        }),
+        [hub](const PropertyList& props) -> ReturnValue {
+            std::string st = props["station"].value<std::string>();
+            ESP_LOGI(TAG, "MCP Tool media.play_vietnam_radio: %s", st.c_str());
+
+            std::string url;
+            std::string title;
+            if (st == "vov_giaothong" || st == "giaothong" || st == "giao_thong" || st == "hn") {
+                url = "https://ha.orchable.app/api/audio_gateway/stream?station=vov_giaothong";
+                title = "VOV Giao Thông Hà Nội";
+            } else if (st == "vov_giaothong_hcm" || st == "hcm" || st == "sai_gon") {
+                url = "https://ha.orchable.app/api/audio_gateway/stream?station=vov_giaothong_hcm";
+                title = "VOV Giao Thông TP.HCM";
+            } else if (st == "vov1" || st == "thoisu" || st == "thoi_su") {
+                url = "https://ha.orchable.app/api/audio_gateway/stream?station=vov1";
+                title = "VOV1 - Thời sự";
+            } else {
+                url = "https://ha.orchable.app/api/audio_gateway/stream?station=vov_giaothong";
+                title = "VOV Giao Thông";
+            }
+
+            bool ok = hub->PlayAudioStream(url, title);
+            return ok ? ("Đang phát " + title + " ở âm lượng 80%") : "Không thể kết nối đến luồng phát thanh";
+        });
+
+    // 11. Tool phat am thanh / podcast qua URL truc tiep
+    mcp.AddTool("media.play_audio_url",
+        "Phát một luồng âm thanh hoặc podcast từ đường dẫn URL (OGG/Opus) trực tiếp ra loa thiết bị.\n"
+        "url: Đường dẫn âm thanh http/https\n"
+        "title: Tên bài hát hoặc tiêu đề âm thanh",
+        PropertyList({
+            Property("url", kPropertyTypeString),
+            Property("title", kPropertyTypeString)
+        }),
+        [hub](const PropertyList& props) -> ReturnValue {
+            std::string url = props["url"].value<std::string>();
+            std::string title = props["title"].value<std::string>();
+            ESP_LOGI(TAG, "MCP Tool media.play_audio_url: %s - %s", title.c_str(), url.c_str());
+            bool ok = hub->PlayAudioStream(url, title);
+            return ok ? ("Bắt đầu phát: " + title) : "Lỗi khi mở luồng âm thanh";
+        });
+
+    // 12. Tool dung phat am thanh
+    mcp.AddTool("media.stop_audio",
+        "Dừng phát âm thanh, radio hoặc podcast đang chạy trên thiết bị hoặc Home Assistant.",
+        PropertyList(),
+        [hub](const PropertyList& props) -> ReturnValue {
+            hub->StopAudioStream();
+            return "Đã dừng phát âm thanh.";
+        });
+
+    // 13. Tool phat nhac qua Home Assistant (YouTube / Spotify / Media Player)
+    mcp.AddTool("media.play_home_assistant",
+        "Gửi lệnh phát nhạc, bài hát hoặc video YouTube qua máy chủ Home Assistant (đến Media Player / Loa thông minh trong nhà).\n"
+        "entity_id: Id thiết bị media player trên HA (ví dụ: 'media_player.living_room_speaker', 'media_player.music_assistant')\n"
+        "media_url: Đường dẫn YouTube, URL nhạc, hoặc ID bài hát cần phát\n"
+        "media_type: Loại media ('music', 'audio/mp3', 'video/youtube')",
+        PropertyList({
+            Property("entity_id", kPropertyTypeString),
+            Property("media_url", kPropertyTypeString),
+            Property("media_type", kPropertyTypeString)
+        }),
+        [hub](const PropertyList& props) -> ReturnValue {
+            std::string entity_id = props["entity_id"].value<std::string>();
+            std::string media_url = props["media_url"].value<std::string>();
+            std::string media_type = props["media_type"].value<std::string>();
+            ESP_LOGI(TAG, "MCP Tool media.play_home_assistant: %s -> %s", entity_id.c_str(), media_url.c_str());
+            bool ok = hub->PlayHomeAssistantMedia(entity_id, media_url, media_type);
+            return ok ? ("Đã gửi lệnh phát sang Home Assistant: " + entity_id) : "Lỗi khi gửi lệnh sang Home Assistant";
+        });
+
+    ESP_LOGI(TAG, "Smart Home, UI Navigation, Sensor & Media MCP tools successfully registered");
 }

@@ -30,3 +30,4 @@ Mọi quy ước về tạo, đặt tên và cấu trúc tài liệu tuân thủ
 ### 5. Ý Tưởng (Ideas)
 
 ### 6. Bàn Giao Ca Làm Việc (Handover)
+- [2026-10-04: Bàn Giao Phiên Làm Việc - Smart Home Hub, Điều khiển Home Assistant & Tích hợp Âm thanh Tiếng Việt trên CoreS3](./handover/2026-10-04-smart-home-hub-vietnam-audio-handover.md) *(Active)*

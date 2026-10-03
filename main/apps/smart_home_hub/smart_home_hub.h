@@ -52,6 +52,11 @@ public:
     void SaveHomeAssistantConfig(const std::string& base_url, const std::string& access_token);
     bool SyncDevicesFromHomeAssistant();
 
+    bool PlayAudioStream(const std::string& url, const std::string& title);
+    bool StopAudioStream();
+    bool PlayHomeAssistantMedia(const std::string& entity_id, const std::string& media_url, const std::string& media_type);
+    bool StopHomeAssistantMedia(const std::string& entity_id);
+
     const std::vector<SmartDevice>& GetDevices() const { return devices_; }
     DashboardScreen& GetDashboardScreen() { return dashboard_screen_; }
     SensorDashboardScreen& GetSensorDashboard() { return sensor_dashboard_screen_; }
