@@ -65,29 +65,46 @@ Liệt kê chính xác những gì đã thực hiện, kèm đường dẫn file
 
 Những việc đang làm dở, chưa hoàn tất hoặc còn cần làm tiếp trong phiên sau:
 
-- [ ] **Nạp bản build mới xuống CoreS3:**
-  - Firmware đã được biên dịch thành công (`xiaozhi.bin` bao gồm MCP tool `media.play_youtube`).
-  - Cần đưa CoreS3 về Download Mode (giữ nút nguồn bên hông khoảng 3 giây hoặc cắm lại cáp Type-C) để nạp bản firmware mới vào thiết bị qua cổng `/dev/cu.usbmodem2101`.
-- [ ] **Thử nghiệm giọng nói thực tế:**
-  - Ra lệnh: *"Bật bài Lạc Trôi Sơn Tùng"* hoặc *"Bật bài Cơn Mưa Ngang Qua"* để xác nhận thiết bị kích hoạt `media.play_youtube` và phát nhạc trực tiếp ra loa.
+- [x] **Nạp bản build mới xuống CoreS3:**
+  - Firmware biên dịch sạch và nạp thành công cả 5 phân vùng xuống `/dev/cu.usbmodem2101`.
+- [x] **Thử nghiệm giọng nói và phát nhạc thực tế:**
+  - Thiết bị nhận đúng công cụ MCP `media.play_youtube`, tự động tăng âm lượng 80% và phát nhạc mượt mà từ YouTube Music qua Gateway.
+
+---
+
+## 3. Trạng thái hiện tại & Việc đang dang dở
+
+Hệ thống đã hoạt động ổn định:
+- [x] Nghe đài FM tiếng Việt (VOV Giao Thông HN, HCM, VOV1).
+- [x] Tìm kiếm và phát bài hát từ YouTube Music qua giọng nói tiếng Việt.
+- [x] Điều khiển nhà thông minh và đồng bộ động danh sách thực thể từ Home Assistant.
+- [x] Đọc dữ liệu cảm biến phần cứng (Pin, Nhiệt độ, Ánh sáng) và hiển thị thẻ cảm biến / Dashboard lên màn hình CoreS3.
+- [x] **Màn hình biểu cảm cảm xúc (Emotion Eyes - Kawaii Style) & Trễ chuyển màn hình:**
+  - File: [`main/apps/smart_home_hub/ui/emotion_eye_screen.h`](file:///Users/tonypham/MEGA/IDF/xiaozhi-esp32/main/apps/smart_home_hub/ui/emotion_eye_screen.h) & [`main/apps/smart_home_hub/ui/emotion_eye_screen.cc`](file:///Users/tonypham/MEGA/IDF/xiaozhi-esp32/main/apps/smart_home_hub/ui/emotion_eye_screen.cc)
+  - Mắt cảm xúc vector Kawaii với animation chớp mắt, đảo mắt, má hồng, các trạng thái `Idle`, `Listening`, `Thinking`, `Speaking`, `Happy`, `Sleepy`.
+  - Mặc định là màn hình chính khi khởi động (lưu NVS `smarthome:def_screen`).
+  - Hỗ trợ đổi màn hình mặc định qua giọng nói bằng MCP tool `ui.set_default_view`.
+  - Giữ màn hình mắt biểu cảm suy nghĩ (`Thinking`) tối đa 2s trong lúc chờ LLM xử lý trước khi chuyển sang Dashboard/Sensor Card.
+- [x] **Tối ưu hóa Buffer Streaming & Xử lý tương tác ngắt khi phát nhạc:**
+  - File: [`main/notify/notify_player.cc`](file:///Users/tonypham/MEGA/IDF/xiaozhi-esp32/main/notify/notify_player.cc), [`main/apps/smart_home_hub/smart_home_hub.cc`](file:///Users/tonypham/MEGA/IDF/xiaozhi-esp32/main/apps/smart_home_hub/smart_home_hub.cc), [`main/application.cc`](file:///Users/tonypham/MEGA/IDF/xiaozhi-esp32/main/application.cc).
+  - Tăng `kHttpReadBufferSize` từ 1024 lên 4096 bytes và `kNotifyTaskPriority` từ 2 lên 4; tăng timeout lên 10000ms nhằm triệt tiêu hoàn toàn hiện tượng nghẽn mạng / underrun / lag giật âm thanh.
+  - Hạ âm lượng phát nhạc mặc định từ 80% xuống 65% để chống bão hòa âm thanh vào microphone, giúp Wake Word tiếp tục hoạt động nhận diện giọng nói.
+  - Tối ưu `HandleToggleChatEvent`: Khi người dùng chạm vào màn hình trong lúc phát nhạc (`kDeviceStateNotifying`), thiết bị lập tức ngắt stream nhạc và chuyển ngay sang chế độ lắng nghe (`StartListening`).
 
 ---
 
 ## 4. Lưu ý kỹ thuật & Nợ kỹ thuật (Gotchas & Technical Debt)
 
 - **Định dạng âm thanh gốc của đài FM:** Tất cả các đài VOV hiện tại đã dừng luồng mp3/ogg tĩnh và chuyển sang luồng phân đoạn HLS `.m3u8` (ví dụ `https://play.vovgiaothong.vn/live/gthn/playlist.m3u8`). ESP32 không thể tải trực tiếp file m3u8 nếu không có bộ đệm HLS client. Vì vậy luồng bắt buộc phải đi qua `audio-stream-gateway` để chuyển thành Ogg Opus chunked stream.
-- **Bypass YouTube Premium trong Music Assistant:** Mỗi khi container `music-assistant` pull image mới, logic `_user_has_ytm_premium` sẽ bị reset về mặc định yêu cầu Premium. Cần lưu ý chạy lại sed patch nếu recreate container.
+- **YouTube Music Bot Bypass & Image Commit:** Image Docker `audio-stream-gateway:latest` đã commit đầy đủ Deno JS runtime, Netscape cookie và PO-token client `bgutil-ytdlp-pot-provider` để không bị YouTube chặn IP datacenter của Oracle Cloud.
 - **Bảo mật Cloudflare Ingress:** Endpoint stream của `audio_gateway` đặt tại `https://ha.orchable.app/api/audio_gateway/stream`, tận dụng route công khai qua Cloudflare Tunnel không cần mở port firewall công khai trực tiếp.
 
 ---
 
 ## 5. Hướng dẫn hành động cho Agent kế tiếp (Next Actions)
 
-Các bước tuần tự cụ thể mà Agent phiên kế tiếp cần bắt tay vào làm ngay:
-
-1. **Bước 1**: Mở Serial Monitor của CoreS3 (`./docs/setup/flash_cores3.sh /dev/cu.usbmodem2101 monitor`) để theo dõi khi người dùng ra lệnh "Bật đài VOV Giao Thông".
-2. **Bước 2**: Xác nhận xem `NotifyPlayer` có nhận được gói tin Ogg từ `https://ha.orchable.app/api/audio_gateway/stream` và giải mã ra I2S codec thành công không.
-3. **Bước 3**: Nếu người dùng muốn nghe nhạc YouTube trực tiếp trên loa CoreS3: kết nối `audio-stream-gateway` vào luồng output của Music Assistant server (`http://music-assistant:8095`).
+1. Duy trì cập nhật các thẻ Dashboard UI và tối ưu hiệu ứng hiển thị theo kế hoạch `2026-10-02-smart-home-hub-mcp-miniapp-plan.md`.
+2. Theo dõi hạn sử dụng của YouTube cookie trong `audio-stream-gateway` nếu có thay đổi phiên đăng nhập từ Google Account.
 
 ---
 

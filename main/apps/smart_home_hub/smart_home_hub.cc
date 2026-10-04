@@ -16,11 +16,13 @@ void SmartHomeHub::Initialize(lv_display_t* lv_display) {
     if (initialized_) return;
     ESP_LOGI(TAG, "Initializing SmartHomeHub on CoreS3");
 
+    LoadSettings();
     LoadHomeAssistantConfig();
     LoadDevices();
     ble_controller_.Initialize();
 
     if (lv_display != nullptr) {
+        emotion_eye_screen_.Initialize(lv_display);
         dashboard_screen_.Initialize(lv_display);
         dashboard_screen_.SetToggleCallback([this](const std::string& dev_id, bool state) {
             SetDeviceState(dev_id, state);
@@ -58,6 +60,20 @@ void SmartHomeHub::Initialize(lv_display_t* lv_display) {
             .skip_unhandled_events = true,
         };
         esp_timer_create(&toast_args, &toast_timer_);
+
+        esp_timer_create_args_t defer_args = {
+            .callback = &SmartHomeHub::OnDeferredSwitchTimeout,
+            .arg = this,
+            .dispatch_method = ESP_TIMER_TASK,
+            .name = "sh_defer_switch",
+            .skip_unhandled_events = true,
+        };
+        esp_timer_create(&defer_args, &deferred_switch_timer_);
+
+        // Show default screen on startup if mode is Eyes
+        if (default_screen_mode_ == DefaultScreenMode::Eyes) {
+            ShowEmotionEyes();
+        }
     }
 
     SmartHomeMcpTools::RegisterTools(this);
@@ -179,53 +195,140 @@ void SmartHomeHub::HideSensorCard() {
     sensor_card_screen_.Hide();
 }
 
-void SmartHomeHub::ShowCameraPreview() {
+void SmartHomeHub::ShowEmotionEyes() {
     dashboard_screen_.Hide();
     sensor_dashboard_screen_.Hide();
     sensor_card_screen_.Hide();
-    camera_preview_screen_.Show();
-}
-
-void SmartHomeHub::HideCameraPreview() {
     camera_preview_screen_.Hide();
+    emotion_eye_screen_.Show();
 }
 
-bool SmartHomeHub::SwitchScreen(const std::string& screen_name) {
-    ESP_LOGI(TAG, "SwitchScreen requested: %s", screen_name.c_str());
-    if (screen_name == "sensors" || screen_name == "sensor" || screen_name == "cam_bien" || screen_name == "telemetry") {
-        ShowSensorDashboard();
-        return true;
-    } else if (screen_name == "temperature" || screen_name == "nhiet_do") {
-        ShowSensorCard("temperature");
-        return true;
-    } else if (screen_name == "battery" || screen_name == "pin") {
-        ShowSensorCard("battery");
-        return true;
-    } else if (screen_name == "light" || screen_name == "lux" || screen_name == "anh_sang") {
-        ShowSensorCard("light");
-        return true;
-    } else if (screen_name == "motion" || screen_name == "imu" || screen_name == "chuyen_dong") {
-        ShowSensorCard("motion");
-        return true;
-    } else if (screen_name == "network" || screen_name == "wifi" || screen_name == "mang") {
-        ShowSensorCard("network");
-        return true;
-    } else if (screen_name == "system" || screen_name == "ram" || screen_name == "he_thong") {
-        ShowSensorCard("system");
-        return true;
-    } else if (screen_name == "smarthome" || screen_name == "home" || screen_name == "dashboard" || screen_name == "nha_thong_minh") {
-        ShowDashboard();
-        return true;
-    } else if (screen_name == "camera" || screen_name == "may_anh" || screen_name == "chup_hinh" || screen_name == "cam" || screen_name == "live" || screen_name == "xem_truoc") {
-        ShowCameraPreview();
-        return true;
-    } else if (screen_name == "main" || screen_name == "xiaozhi" || screen_name == "chinh" ||
-               screen_name == "tro_ly" || screen_name == "chat" || screen_name == "default" ||
-               screen_name == "mac_dinh" || screen_name == "quay_lai" || screen_name == "man_hinh_chat") {
+void SmartHomeHub::HideEmotionEyes() {
+    emotion_eye_screen_.Hide();
+}
+
+void SmartHomeHub::SetEmotionEyes(EyeEmotion emotion) {
+    emotion_eye_screen_.SetEmotion(emotion);
+}
+
+void SmartHomeHub::SetEmotionEyesByName(const std::string& name) {
+    emotion_eye_screen_.SetEmotionByName(name);
+}
+
+void SmartHomeHub::OnDeferredSwitchTimeout(void* arg) {
+    auto hub = static_cast<SmartHomeHub*>(arg);
+    if (hub == nullptr) return;
+    Application::GetInstance().Schedule([hub]() {
+        hub->ExecutePendingScreenSwitch();
+    });
+}
+
+void SmartHomeHub::ScheduleScreenSwitch(const std::string& screen_name, uint32_t delay_ms) {
+    pending_screen_switch_ = screen_name;
+    ESP_LOGI(TAG, "ScheduleScreenSwitch: '%s' scheduled with max %lu ms delay", screen_name.c_str(), delay_ms);
+    // Keep or set eye emotion to Thinking while LLM processes
+    SetEmotionEyes(EyeEmotion::Thinking);
+
+    if (deferred_switch_timer_ != nullptr) {
+        esp_timer_stop(deferred_switch_timer_);
+        esp_timer_start_once(deferred_switch_timer_, delay_ms * 1000);
+    }
+}
+
+void SmartHomeHub::ExecutePendingScreenSwitch() {
+    if (deferred_switch_timer_ != nullptr) {
+        esp_timer_stop(deferred_switch_timer_);
+    }
+    if (!pending_screen_switch_.empty()) {
+        std::string target = pending_screen_switch_;
+        pending_screen_switch_.clear();
+        ESP_LOGI(TAG, "Executing pending screen switch -> %s", target.c_str());
+        SwitchScreen(target);
+    }
+}
+
+void SmartHomeHub::LoadSettings() {
+    Settings settings("smarthome", false);
+    std::string mode = settings.GetString("def_screen", "eyes");
+    if (mode == "chat") {
+        default_screen_mode_ = DefaultScreenMode::Chat;
+    } else {
+        default_screen_mode_ = DefaultScreenMode::Eyes;
+    }
+    ESP_LOGI(TAG, "Loaded default screen mode: %s", (default_screen_mode_ == DefaultScreenMode::Eyes) ? "eyes" : "chat");
+}
+
+void SmartHomeHub::SetDefaultScreenMode(DefaultScreenMode mode) {
+    default_screen_mode_ = mode;
+    Settings settings("smarthome", true);
+    settings.SetString("def_screen", (mode == DefaultScreenMode::Eyes) ? "eyes" : "chat");
+    ESP_LOGI(TAG, "Saved default screen mode: %s", (mode == DefaultScreenMode::Eyes) ? "eyes" : "chat");
+}
+
+void SmartHomeHub::ReturnToDefaultScreen() {
+    if (default_screen_mode_ == DefaultScreenMode::Eyes) {
+        ShowEmotionEyes();
+        SetEmotionEyes(EyeEmotion::Idle);
+    } else {
         HideDashboard();
         HideSensorDashboard();
         HideSensorCard();
         HideCameraPreview();
+        HideEmotionEyes();
+    }
+}
+
+bool SmartHomeHub::SwitchScreen(const std::string& screen_name) {
+    ESP_LOGI(TAG, "SwitchScreen requested: %s", screen_name.c_str());
+    if (screen_name == "eyes" || screen_name == "eye" || screen_name == "mat" || screen_name == "bieu_cam" || screen_name == "emotion") {
+        ShowEmotionEyes();
+        return true;
+    } else if (screen_name == "sensors" || screen_name == "sensor" || screen_name == "cam_bien" || screen_name == "telemetry") {
+        emotion_eye_screen_.Hide();
+        ShowSensorDashboard();
+        return true;
+    } else if (screen_name == "temperature" || screen_name == "nhiet_do") {
+        emotion_eye_screen_.Hide();
+        ShowSensorCard("temperature");
+        return true;
+    } else if (screen_name == "battery" || screen_name == "pin") {
+        emotion_eye_screen_.Hide();
+        ShowSensorCard("battery");
+        return true;
+    } else if (screen_name == "light" || screen_name == "lux" || screen_name == "anh_sang") {
+        emotion_eye_screen_.Hide();
+        ShowSensorCard("light");
+        return true;
+    } else if (screen_name == "motion" || screen_name == "imu" || screen_name == "chuyen_dong") {
+        emotion_eye_screen_.Hide();
+        ShowSensorCard("motion");
+        return true;
+    } else if (screen_name == "network" || screen_name == "wifi" || screen_name == "mang") {
+        emotion_eye_screen_.Hide();
+        ShowSensorCard("network");
+        return true;
+    } else if (screen_name == "system" || screen_name == "ram" || screen_name == "he_thong") {
+        emotion_eye_screen_.Hide();
+        ShowSensorCard("system");
+        return true;
+    } else if (screen_name == "smarthome" || screen_name == "home" || screen_name == "dashboard" || screen_name == "nha_thong_minh") {
+        emotion_eye_screen_.Hide();
+        ShowDashboard();
+        return true;
+    } else if (screen_name == "camera" || screen_name == "may_anh" || screen_name == "chup_hinh" || screen_name == "cam" || screen_name == "live" || screen_name == "xem_truoc") {
+        emotion_eye_screen_.Hide();
+        ShowCameraPreview();
+        return true;
+    } else if (screen_name == "main" || screen_name == "xiaozhi" || screen_name == "chinh" ||
+               screen_name == "tro_ly" || screen_name == "chat" || screen_name == "man_hinh_chat") {
+        HideDashboard();
+        HideSensorDashboard();
+        HideSensorCard();
+        HideCameraPreview();
+        HideEmotionEyes();
+        return true;
+    } else if (screen_name == "default" || screen_name == "mac_dinh" || screen_name == "quay_lai") {
+        ReturnToDefaultScreen();
         return true;
     }
 
@@ -409,15 +512,15 @@ bool SmartHomeHub::SyncDevicesFromHomeAssistant() {
 
 bool SmartHomeHub::PlayAudioStream(const std::string& url, const std::string& title) {
     ESP_LOGI(TAG, "PlayAudioStream: %s (%s)", title.c_str(), url.c_str());
-    ShowToast("Đang phát (80%): " + title);
+    ShowToast("Đang phát (65%): " + title);
 
     Application::GetInstance().Schedule([url, title]() mutable {
         auto& app = Application::GetInstance();
-        // Tự động nâng âm lượng loa lên 80% khi phát nhạc / radio
+        // Giữ âm lượng ở mức 65% khi phát nhạc để tránh bão hòa micro (giúp wake word & tương tác nhận diện được)
         auto codec = Board::GetInstance().GetAudioCodec();
         if (codec) {
-            codec->SetOutputVolume(80);
-            ESP_LOGI(TAG, "Default music volume set to 80%%");
+            codec->SetOutputVolume(65);
+            ESP_LOGI(TAG, "Default music volume set to 65%%");
         }
 
         // Ngat loi noi cua AI va chuyen ve Idle de NotifyPlayer chap nhan stream

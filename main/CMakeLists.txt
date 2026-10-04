@@ -57,6 +57,7 @@ if(CONFIG_ENABLE_SMART_HOME_HUB)
         "apps/smart_home_hub/ui/sensor_dashboard_screen.cc"
         "apps/smart_home_hub/ui/sensor_card_screen.cc"
         "apps/smart_home_hub/ui/camera_preview_screen.cc"
+        "apps/smart_home_hub/ui/emotion_eye_screen.cc"
     )
 endif()
 

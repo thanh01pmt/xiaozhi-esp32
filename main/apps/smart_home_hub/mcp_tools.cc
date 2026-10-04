@@ -89,18 +89,20 @@ void SmartHomeMcpTools::RegisterTools(SmartHomeHub* hub) {
 
     // 6. Tool liet ke danh sach tat ca man hinh co the mo tren thiet bi
     mcp.AddTool("ui.list_screens",
-        "Liệt kê tất cả các màn hình có thể chuyển đổi trên thiết bị: main/chat (trợ lý AI chính), sensors (bảng tổng quan cảm biến), sáu màn hình đơn cho từng cảm biến (temperature, battery, light, motion, network, system), smarthome (điều khiển nhà thông minh) và camera (xem trước camera).",
+        "Liệt kê tất cả các màn hình có thể chuyển đổi trên thiết bị: eyes (màn hình biểu cảm cặp mắt robot AI), main/chat (trợ lý AI chính dạng văn bản), sensors (bảng tổng quan cảm biến), sáu màn hình đơn cho từng cảm biến (temperature, battery, light, motion, network, system), smarthome (điều khiển nhà thông minh) và camera (xem trước camera).",
         PropertyList(),
         [hub](const PropertyList& props) -> ReturnValue {
             return hub->ListScreensJson();
         });
 
-    // 7. Tool chuyen doi man hinh theo yeu cau cua nguoi dung
+    // 7. Tool chuyen doi man hinh theo yeu cau cua nguoi dung (co do tre cho LLM san sang)
     mcp.AddTool("ui.switch_screen",
         "Chuyển đổi giao diện màn hình trên thiết bị theo yêu cầu.\n"
+        "Trong lúc chờ LLM suy nghĩ, màn hình sẽ giữ animation biểu cảm mắt (Thinking), và sẽ tự động chuyển sang màn hình được chọn khi bạn bắt đầu phản hồi (hoặc tối đa sau 2 giây).\n"
         "screen_name: Tên màn hình cần chuyển:\n"
-        "  - 'main' (hoặc 'chat'): màn hình chat/trợ lý mặc định.\n"
-        "  - 'temperature', 'battery', 'light', 'motion', 'network', 'system': màn hình đơn của một cảm biến, dùng khi người dùng hỏi về đúng cảm biến đó.\n"
+        "  - 'eyes': màn hình biểu cảm cặp mắt robot (Kawaii/Robot Eyes).\n"
+        "  - 'main' (hoặc 'chat'): màn hình chat/trợ lý dạng văn bản.\n"
+        "  - 'temperature', 'battery', 'light', 'motion', 'network', 'system': màn hình đơn của một cảm biến.\n"
         "  - 'sensors': bảng tổng quan tất cả cảm biến.\n"
         "  - 'smarthome': bảng điều khiển nhà thông minh.\n"
         "  - 'camera': xem trước camera trực tiếp.",
@@ -109,15 +111,31 @@ void SmartHomeMcpTools::RegisterTools(SmartHomeHub* hub) {
         }),
         [hub](const PropertyList& props) -> ReturnValue {
             std::string name = props["screen_name"].value<std::string>();
-            ESP_LOGI(TAG, "MCP Tool ui.switch_screen: %s", name.c_str());
-            // SmartHomeHub::SwitchScreen owns the screen list. Duplicating it
-            // here used to reject the sensor cards the hub already supported.
-            // It returns before the queued job runs, so the result cannot be
-            // reported back; SwitchScreen logs the unknown name itself.
+            ESP_LOGI(TAG, "MCP Tool ui.switch_screen: %s (scheduled deferred switch)", name.c_str());
             Application::GetInstance().Schedule([hub, name]() {
-                hub->SwitchScreen(name);
+                hub->ScheduleScreenSwitch(name, 2000);
             });
             return true;
+        });
+
+    // 7b. Tool thiet lap man hinh mac dinh (Default View: Eye Animation hoac Chat View)
+    mcp.AddTool("ui.set_default_view",
+        "Thiết lập màn hình nền mặc định cho thiết bị theo yêu cầu của người dùng bằng giọng nói.\n"
+        "Dùng khi người dùng nói: 'đặt màn hình mặc định là mắt/eye animation', 'đặt màn hình chờ là khuôn mặt', 'đổi màn hình mặc định sang chat/chữ', 'cài đặt màn hình nền'.\n"
+        "view_mode: 'eyes' để đặt màn hình biểu cảm mắt làm mặc định; 'chat' để đặt giao diện chat/trợ lý dạng chữ làm mặc định.",
+        PropertyList({
+            Property("view_mode", kPropertyTypeString)
+        }),
+        [hub](const PropertyList& props) -> ReturnValue {
+            std::string mode_str = props["view_mode"].value<std::string>();
+            ESP_LOGI(TAG, "MCP Tool ui.set_default_view: %s", mode_str.c_str());
+            bool is_eyes = (mode_str == "eyes" || mode_str == "eye" || mode_str == "mat" || mode_str == "bieu_cam" || mode_str == "kawaii");
+            Application::GetInstance().Schedule([hub, is_eyes]() {
+                hub->SetDefaultScreenMode(is_eyes ? DefaultScreenMode::Eyes : DefaultScreenMode::Chat);
+                hub->ReturnToDefaultScreen();
+            });
+            return is_eyes ? "Đã cài đặt màn hình mặc định là biểu cảm mắt (Eye Animation View)!"
+                           : "Đã cài đặt màn hình mặc định là màn hình hội thoại (Chat View)!";
         });
 
     // 8. Tool doc toan bo cam bien tren M5Stack CoreS3 (Grounding cho AI)
@@ -140,9 +158,9 @@ void SmartHomeMcpTools::RegisterTools(SmartHomeHub* hub) {
             std::string type = props["sensor_type"].value<std::string>();
             ESP_LOGI(TAG, "MCP Tool sensor.get_sensor_data: %s", type.c_str());
 
-            // Tu dong bat the man hinh rieng cua cam bien do
+            // Lên lịch chuyển sang thẻ cảm biến đó sau tối đa 2s (hoặc khi bắt đầu nói câu trả lời)
             Application::GetInstance().Schedule([hub, type]() {
-                hub->ShowSensorCard(type);
+                hub->ScheduleScreenSwitch(type, 2000);
             });
 
             return SensorMonitor::GetInstance().GetSensorDataJson(type);
@@ -177,12 +195,12 @@ void SmartHomeMcpTools::RegisterTools(SmartHomeHub* hub) {
             std::string url = "https://ha.orchable.app/api/audio_gateway/stream?q=" + encoded_q;
             std::string title = "YouTube: " + q;
             bool ok = hub->PlayAudioStream(url, title);
-            return ok ? ("Đang tìm kiếm và phát bài hát '" + q + "' từ YouTube Music với âm lượng 80%") : "Không thể phát nhạc từ YouTube Music";
+            return ok ? ("Đang tìm kiếm và phát bài hát '" + q + "' từ YouTube Music") : "Không thể phát nhạc từ YouTube Music";
         });
 
     // 11. Tool phat kenh Radio / Am nhac tieng Viet
     mcp.AddTool("media.play_vietnam_radio",
-        "Phát các kênh Radio / Tin tức / Âm nhạc trực tuyến tiếng Việt (VOV) trực tiếp trên loa thiết bị ở mức âm lượng 80%.\n"
+        "Phát các kênh Radio / Tin tức / Âm nhạc trực tuyến tiếng Việt (VOV) trực tiếp trên loa thiết bị.\n"
         "Gọi công cụ này khi người dùng yêu cầu 'nghe radio', 'bật đài', 'bật VOV', 'nghe VOV giao thông'.\n"
         "station: Tên kênh cần nghe:\n"
         "  - 'vov_giaothong': VOV Giao thông Hà Nội (Tin giao thông, ca nhạc Việt Nam, tin tức)\n"
@@ -213,7 +231,7 @@ void SmartHomeMcpTools::RegisterTools(SmartHomeHub* hub) {
             }
 
             bool ok = hub->PlayAudioStream(url, title);
-            return ok ? ("Đang phát " + title + " ở âm lượng 80%") : "Không thể kết nối đến luồng phát thanh";
+            return ok ? ("Đang phát " + title) : "Không thể kết nối đến luồng phát thanh";
         });
 
     // 11. Tool phat am thanh / podcast qua URL truc tiep

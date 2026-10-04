@@ -19,6 +19,10 @@
 #include <cstring>
 #include <limits>
 
+#if CONFIG_ENABLE_SMART_HOME_HUB
+#include "smart_home_hub.h"
+#endif
+
 #define TAG "Application"
 
 Application::Application() : notify_player_(audio_service_) {
@@ -625,6 +629,9 @@ void Application::InitializeProtocol() {
                 Schedule([this]() {
                     aborted_ = false;
                     SetDeviceState(kDeviceStateSpeaking);
+#if CONFIG_ENABLE_SMART_HOME_HUB
+                    SmartHomeHub::GetInstance().ExecutePendingScreenSwitch();
+#endif
                 });
             } else if (strcmp(state->valuestring, "stop") == 0) {
                 Schedule([this]() {
@@ -672,6 +679,9 @@ void Application::InitializeProtocol() {
             if (cJSON_IsString(emotion)) {
                 Schedule([display, emotion_str = std::string(emotion->valuestring)]() {
                     display->SetEmotion(emotion_str.c_str());
+#if CONFIG_ENABLE_SMART_HOME_HUB
+                    SmartHomeHub::GetInstance().SetEmotionEyesByName(emotion_str);
+#endif
                 });
             }
         } else if (strcmp(type->valuestring, "mcp") == 0) {
@@ -783,6 +793,7 @@ void Application::HandleToggleChatEvent() {
     if (state == kDeviceStateNotifying) {
         StopNotification();
         state = kDeviceStateIdle;
+        // Proceed directly to start listening so user touch interrupts audio playback immediately
     }
 
     if (state == kDeviceStateActivating) {
@@ -1015,6 +1026,9 @@ void Application::HandleStateChangedEvent() {
                 display->ClearChatMessages();  // Clear messages first
                 display->SetEmotion(
                     "neutral");  // Then set emotion (wechat mode checks child count)
+#if CONFIG_ENABLE_SMART_HOME_HUB
+                SmartHomeHub::GetInstance().ReturnToDefaultScreen();
+#endif
             }
             audio_service_.EnableVoiceProcessing(false);
             audio_service_.EnableWakeWordDetection(true);
@@ -1027,6 +1041,9 @@ void Application::HandleStateChangedEvent() {
         case kDeviceStateListening:
             display->SetStatus(Lang::Strings::LISTENING);
             display->SetEmotion("neutral");
+#if CONFIG_ENABLE_SMART_HOME_HUB
+            SmartHomeHub::GetInstance().SetEmotionEyes(EyeEmotion::Listening);
+#endif
 
             // Make sure the audio processor is running
             if (play_popup_on_listening_ || !audio_service_.IsAudioProcessorRunning()) {
@@ -1045,6 +1062,9 @@ void Application::HandleStateChangedEvent() {
             break;
         case kDeviceStateSpeaking:
             display->SetStatus(Lang::Strings::SPEAKING);
+#if CONFIG_ENABLE_SMART_HOME_HUB
+            SmartHomeHub::GetInstance().SetEmotionEyes(EyeEmotion::Speaking);
+#endif
 
             if (listening_mode_ != kListeningModeRealtime) {
                 audio_service_.EnableVoiceProcessing(false);

@@ -12,7 +12,13 @@
 #include "ui/sensor_dashboard_screen.h"
 #include "ui/sensor_card_screen.h"
 #include "ui/camera_preview_screen.h"
+#include "ui/emotion_eye_screen.h"
 #include "web_config_server.h"
+
+enum class DefaultScreenMode {
+    Eyes,
+    Chat
+};
 
 class SmartHomeHub {
 public:
@@ -35,12 +41,23 @@ public:
     void ShowCameraPreview();
     void HideCameraPreview();
 
+    void ShowEmotionEyes();
+    void HideEmotionEyes();
+    void SetEmotionEyes(EyeEmotion emotion);
+    void SetEmotionEyesByName(const std::string& name);
+
+    // Screen navigation
     bool SwitchScreen(const std::string& screen_name);
+    void ScheduleScreenSwitch(const std::string& screen_name, uint32_t delay_ms = 2000);
+    void ExecutePendingScreenSwitch();
     std::string ListScreensJson();
 
-    // Short confirmation on whatever screen is active, then fades out. Used for
-    // actions whose result is otherwise invisible: a refused screen name, a
-    // sensor the tool could not read.
+    // Default screen preference
+    void SetDefaultScreenMode(DefaultScreenMode mode);
+    DefaultScreenMode GetDefaultScreenMode() const { return default_screen_mode_; }
+    void ReturnToDefaultScreen();
+
+    // Short confirmation on whatever screen is active, then fades out.
     void ShowToast(const std::string& text);
 
     bool SetDeviceState(const std::string& device_id, bool turn_on);
@@ -62,6 +79,7 @@ public:
     SensorDashboardScreen& GetSensorDashboard() { return sensor_dashboard_screen_; }
     SensorCardScreen& GetSensorCard() { return sensor_card_screen_; }
     CameraPreviewScreen& GetCameraPreview() { return camera_preview_screen_; }
+    EmotionEyeScreen& GetEmotionEyeScreen() { return emotion_eye_screen_; }
     SmartHomeNetworkClient& GetNetworkClient() { return network_client_; }
     SmartHomeBleController& GetBleController() { return ble_controller_; }
     WebConfigServer& GetWebServer() { return web_server_; }
@@ -71,6 +89,7 @@ private:
     ~SmartHomeHub() = default;
 
     static void OnToastTimeout(void* arg);
+    static void OnDeferredSwitchTimeout(void* arg);
 
     bool initialized_ = false;
     SmartHomeNetworkClient network_client_;
@@ -79,13 +98,19 @@ private:
     SensorDashboardScreen sensor_dashboard_screen_;
     SensorCardScreen sensor_card_screen_;
     CameraPreviewScreen camera_preview_screen_;
+    EmotionEyeScreen emotion_eye_screen_;
     WebConfigServer web_server_;
     std::vector<SmartDevice> devices_;
+
+    DefaultScreenMode default_screen_mode_ = DefaultScreenMode::Eyes;
+    std::string pending_screen_switch_ = "";
+    esp_timer_handle_t deferred_switch_timer_ = nullptr;
 
     lv_obj_t* toast_label_ = nullptr;
     esp_timer_handle_t toast_timer_ = nullptr;
 
     void LoadDevices();
+    void LoadSettings();
 };
 
 #endif // SMART_HOME_HUB_H

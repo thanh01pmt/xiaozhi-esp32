@@ -12,10 +12,10 @@
 #include "ogg_demuxer.h"
 
 namespace {
-constexpr int kHttpTimeoutMs = 5000;
-constexpr size_t kHttpReadBufferSize = 1024;
-constexpr uint32_t kNotifyTaskStackSize = 6144;
-constexpr UBaseType_t kNotifyTaskPriority = 2;
+constexpr int kHttpTimeoutMs = 10000;
+constexpr size_t kHttpReadBufferSize = 4096;
+constexpr uint32_t kNotifyTaskStackSize = 8192;
+constexpr UBaseType_t kNotifyTaskPriority = 4;
 const char* TAG = "NotifyPlayer";
 
 bool IsSupportedUrl(const std::string& url) {
