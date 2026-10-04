@@ -71,6 +71,10 @@ void Application::Initialize() {
     display->SetupUI();
     // Print board name/version info
     display->SetChatMessage("system", SystemInfo::GetUserAgent().c_str());
+#if CONFIG_ENABLE_SMART_HOME_HUB
+    // Must run after SetupUI(): it builds the chat UI on lv_screen_active().
+    SmartHomeHub::GetInstance().ReturnToDefaultScreen();
+#endif
 
     // Setup the audio service
     auto codec = board.GetAudioCodec();
@@ -362,6 +366,11 @@ void Application::HandleActivationDoneEvent() {
         Schedule([this]() {
             // Play the success sound to indicate the device is ready
             audio_service_.PlaySound(Lang::Sounds::OGG_SUCCESS);
+#if CONFIG_ENABLE_SMART_HOME_HUB
+            if (SmartHomeHub::GetInstance().GetDefaultScreenMode() == DefaultScreenMode::Eyes) {
+                SmartHomeHub::GetInstance().ShowEmotionEyes();
+            }
+#endif
         });
     }
 }

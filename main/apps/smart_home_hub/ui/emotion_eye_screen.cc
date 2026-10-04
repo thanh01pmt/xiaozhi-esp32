@@ -114,15 +114,8 @@ void EmotionEyeScreen::CreateUI() {
     lv_obj_set_style_bg_opa(mouth_, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(mouth_, 5, 0);
 
-    // Touch on eyes toggles back to chat or wakes device
-    lv_obj_add_event_cb(eye_screen_, [](lv_event_t* e) {
-        if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-            ESP_LOGI(TAG, "Touch on eye screen -> toggle chat state");
-            Application::GetInstance().Schedule([]() {
-                Application::GetInstance().ToggleChatState();
-            });
-        }
-    }, LV_EVENT_CLICKED, nullptr);
+    // No tap handler here: the board's touchpad poll already toggles chat on a
+    // short tap, and a second toggle would close the session it just opened.
 }
 
 void EmotionEyeScreen::ResetEyeGeometry() {
@@ -342,12 +335,16 @@ void EmotionEyeScreen::SetEmotionByName(const std::string& name) {
 void EmotionEyeScreen::Show() {
     if (eye_screen_ == nullptr) return;
     if (lvgl_port_lock(200)) {
-        main_screen_ = lv_screen_active();
+        lv_obj_t* cur = lv_screen_active();
+        if (cur != eye_screen_) {
+            main_screen_ = cur;
+        }
         lv_screen_load(eye_screen_);
         is_visible_ = true;
         ResetEyeGeometry();
         lvgl_port_unlock();
         StartIdleAnimationTimer();
+        ESP_LOGI(TAG, "EmotionEyeScreen shown");
     }
 }
 

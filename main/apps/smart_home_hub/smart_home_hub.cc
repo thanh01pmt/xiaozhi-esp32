@@ -70,10 +70,9 @@ void SmartHomeHub::Initialize(lv_display_t* lv_display) {
         };
         esp_timer_create(&defer_args, &deferred_switch_timer_);
 
-        // Show default screen on startup if mode is Eyes
-        if (default_screen_mode_ == DefaultScreenMode::Eyes) {
-            ShowEmotionEyes();
-        }
+        // Do not load eye_screen_ here: this runs from the board constructor,
+        // before LcdDisplay::SetupUI() builds its UI on lv_screen_active().
+        // Application::Initialize() shows the default screen after SetupUI().
     }
 
     SmartHomeMcpTools::RegisterTools(this);

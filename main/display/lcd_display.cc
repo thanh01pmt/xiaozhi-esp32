@@ -1236,8 +1236,9 @@ void LcdDisplay::SetTheme(Theme* theme) {
 
     auto lvgl_theme = static_cast<LvglTheme*>(theme);
 
-    // Get the active screen
-    lv_obj_t* screen = lv_screen_active();
+    // Use the screen that owns our UI: another screen (e.g. an app overlay)
+    // may be active, and styling it would leave our labels on a freed font.
+    lv_obj_t* screen = container_ != nullptr ? lv_obj_get_screen(container_) : lv_screen_active();
 
     // Set font
     auto text_font = lvgl_theme->text_font()->font();
