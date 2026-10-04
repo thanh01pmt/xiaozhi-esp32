@@ -90,12 +90,41 @@ void SensorMonitor::Initialize(Axp2101* pmic, i2c_master_bus_handle_t i2c_bus) {
     i2c_mutex_ = xSemaphoreCreateMutex();
 
     if (i2c_bus_ != nullptr) {
+        i2c_device_config_t axp_cfg = {
+            .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+            .device_address = 0x34,
+            .scl_speed_hz = 400000,
+        };
+        if (i2c_master_bus_add_device(i2c_bus_, &axp_cfg, &axp2101_dev_) == ESP_OK) {
+            uint8_t adc_en = 0b111111;
+            WriteRegs(axp2101_dev_, 0x30, &adc_en, 1, 100);
+        }
         ltr553_available_ = InitLtr553();
         bmi270_available_ = InitBmi270();
+
+        peripherals_.pmic_ok = (pmic_ != nullptr);
+        peripherals_.light_ok = ltr553_available_;
+        peripherals_.imu_ok = bmi270_available_;
+        peripherals_.touch_ok = (i2c_master_probe(i2c_bus_, 0x38, pdMS_TO_TICKS(20)) == ESP_OK);
+        peripherals_.amp_ok = (i2c_master_probe(i2c_bus_, 0x36, pdMS_TO_TICKS(20)) == ESP_OK);
+        peripherals_.mic_adc_ok = (i2c_master_probe(i2c_bus_, 0x40, pdMS_TO_TICKS(20)) == ESP_OK);
+        peripherals_.io_exp_ok = (i2c_master_probe(i2c_bus_, 0x58, pdMS_TO_TICKS(20)) == ESP_OK);
+        peripherals_.rtc_ok = (i2c_master_probe(i2c_bus_, 0x51, pdMS_TO_TICKS(20)) == ESP_OK);
+
+        int count = 0;
+        if (peripherals_.pmic_ok) count++;
+        if (peripherals_.imu_ok) count++;
+        if (peripherals_.light_ok) count++;
+        if (peripherals_.touch_ok) count++;
+        if (peripherals_.amp_ok) count++;
+        if (peripherals_.mic_adc_ok) count++;
+        if (peripherals_.io_exp_ok) count++;
+        if (peripherals_.rtc_ok) count++;
+        peripherals_.total_online = count;
     }
-    ESP_LOGI(TAG, "SensorMonitor ready: PMIC=%s LTR-553ALS=%s BMI270=%s",
+    ESP_LOGI(TAG, "SensorMonitor ready: PMIC=%s LTR-553ALS=%s BMI270=%s (Total ICs online: %d/8)",
              pmic_ != nullptr ? "yes" : "no", ltr553_available_ ? "yes" : "no",
-             bmi270_available_ ? "yes" : "no");
+             bmi270_available_ ? "yes" : "no", peripherals_.total_online);
 }
 
 bool SensorMonitor::InitLtr553() {
@@ -175,6 +204,30 @@ bool SensorMonitor::ReadLtr553(LightSensorData& data) {
     return true;
 }
 
+static struct bmi2_dev s_bmi2_dev;
+
+static BMI2_INTF_RETURN_TYPE Bmi2I2cRead(uint8_t reg_addr, uint8_t* reg_data, uint32_t len, void* intf_ptr) {
+    if (!intf_ptr || !reg_data || len == 0) return BMI2_E_NULL_PTR;
+    auto dev = static_cast<i2c_master_dev_handle_t>(intf_ptr);
+    esp_err_t err = i2c_master_transmit_receive(dev, &reg_addr, 1, reg_data, len, 200);
+    return err == ESP_OK ? BMI2_INTF_RET_SUCCESS : BMI2_E_COM_FAIL;
+}
+
+static BMI2_INTF_RETURN_TYPE Bmi2I2cWrite(uint8_t reg_addr, const uint8_t* reg_data, uint32_t len, void* intf_ptr) {
+    if (!intf_ptr || !reg_data || len == 0) return BMI2_E_NULL_PTR;
+    auto dev = static_cast<i2c_master_dev_handle_t>(intf_ptr);
+    uint8_t buf[256];
+    if (len + 1 > sizeof(buf)) return BMI2_E_COM_FAIL;
+    buf[0] = reg_addr;
+    memcpy(buf + 1, reg_data, len);
+    esp_err_t err = i2c_master_transmit(dev, buf, len + 1, 300);
+    return err == ESP_OK ? BMI2_INTF_RET_SUCCESS : BMI2_E_COM_FAIL;
+}
+
+static void Bmi2DelayUs(uint32_t period, void* intf_ptr) {
+    esp_rom_delay_us(period);
+}
+
 bool SensorMonitor::InitBmi270() {
     if (i2c_master_probe(i2c_bus_, kBmi270Addr, pdMS_TO_TICKS(100)) != ESP_OK) {
         ESP_LOGW(TAG, "BMI270 not found at 0x%02X", kBmi270Addr);
@@ -191,66 +244,44 @@ bool SensorMonitor::InitBmi270() {
         return false;
     }
 
-    auto reg_write = [this](uint8_t reg, uint8_t value) {
-        return WriteRegs(bmi270_dev_, reg, &value, 1, 100);
-    };
-    auto reg_read = [this](uint8_t reg, uint8_t* value) {
-        return ReadRegs(bmi270_dev_, reg, value, 1, 100);
-    };
+    memset(&s_bmi2_dev, 0, sizeof(s_bmi2_dev));
+    s_bmi2_dev.chip_id = BMI270_CHIP_ID;
+    s_bmi2_dev.intf = BMI2_I2C_INTF;
+    s_bmi2_dev.read = Bmi2I2cRead;
+    s_bmi2_dev.write = Bmi2I2cWrite;
+    s_bmi2_dev.delay_us = Bmi2DelayUs;
+    s_bmi2_dev.intf_ptr = bmi270_dev_;
+    s_bmi2_dev.read_write_len = 30;
+    s_bmi2_dev.config_file_ptr = bmi270_config_file;
+    s_bmi2_dev.config_size = BMI270_CONFIG_FILE_SIZE;
 
-    uint8_t chip_id = 0;
-    if (!reg_read(BMI2_CHIP_ID_ADDR, &chip_id) || chip_id != kBmi270ChipId) {
-        ESP_LOGW(TAG, "BMI270 chip id mismatch at 0x%02X (got 0x%02X, want 0x%02X)",
-                 kBmi270Addr, chip_id, kBmi270ChipId);
+    int8_t rslt = bmi2_sec_init(&s_bmi2_dev);
+    if (rslt != BMI2_OK) {
+        ESP_LOGE(TAG, "BMI270 bmi2_sec_init failed: %d", rslt);
         i2c_master_bus_rm_device(bmi270_dev_);
         bmi270_dev_ = nullptr;
         return false;
     }
 
-    // Bosch reference sequence: soft reset, upload the 8 KB configuration blob,
-    // wait for the load to complete, then configure the sensors.
-    reg_write(BMI2_CMD_REG_ADDR, BMI2_SOFT_RESET_CMD);
-    vTaskDelay(pdMS_TO_TICKS(5));
-    reg_read(BMI2_CHIP_ID_ADDR, &chip_id);
-    vTaskDelay(pdMS_TO_TICKS(2));
+    struct bmi2_sens_config config[2];
+    config[0].type = BMI2_ACCEL;
+    config[0].cfg.acc.filter_perf = BMI2_PERF_OPT_MODE;
+    config[0].cfg.acc.bwp = BMI2_ACC_OSR2_AVG2;
+    config[0].cfg.acc.odr = BMI2_ACC_ODR_100HZ;
+    config[0].cfg.acc.range = BMI2_ACC_RANGE_2G;
 
-    reg_write(BMI2_PWR_CONF_ADDR, BMI2_DISABLE);       // leave advanced power save
-    uint8_t init_ctrl = 0x00;
-    reg_write(BMI2_INIT_CTRL_ADDR, init_ctrl);         // config load off while uploading
+    config[1].type = BMI2_GYRO;
+    config[1].cfg.gyr.filter_perf = BMI2_PERF_OPT_MODE;
+    config[1].cfg.gyr.noise_perf = BMI2_GYR_RANGE_2000;
+    config[1].cfg.gyr.bwp = BMI2_GYR_OSR2_MODE;
+    config[1].cfg.gyr.odr = BMI2_GYR_ODR_100HZ;
+    config[1].cfg.gyr.range = BMI2_GYR_RANGE_2000;
+    config[1].cfg.gyr.ois_range = BMI2_GYR_OIS_2000;
 
-    for (size_t index = 0; index < kBmiConfigFileSize; index += kBmiChunkSize) {
-        const uint8_t addr[2] = {
-            static_cast<uint8_t>((index / 2) & 0x0F),
-            static_cast<uint8_t>((index / 2) >> 4),
-        };
-        if (!WriteRegs(bmi270_dev_, BMI2_INIT_ADDR_0, addr, sizeof(addr), 100) ||
-            !WriteRegs(bmi270_dev_, BMI2_INIT_DATA_ADDR, &bmi270_config_file[index],
-                       kBmiChunkSize, 200)) {
-            ESP_LOGE(TAG, "BMI270 config upload failed at offset %u of %zu (chunk %zu bytes)",
-                     static_cast<unsigned int>(index), kBmiConfigFileSize, kBmiChunkSize);
-            i2c_master_bus_rm_device(bmi270_dev_);
-            bmi270_dev_ = nullptr;
-            return false;
-        }
-    }
+    bmi2_set_sensor_config(config, 2, &s_bmi2_dev);
 
-    init_ctrl = 0x01;
-    reg_write(BMI2_INIT_CTRL_ADDR, init_ctrl);  // apply the uploaded config
-    reg_write(BMI2_PWR_CONF_ADDR, BMI2_ENABLE);
-
-    vTaskDelay(pdMS_TO_TICKS(25));
-    uint8_t load_status = 0;
-    reg_read(BMI2_INTERNAL_STATUS_ADDR, &load_status);
-    if ((load_status & BMI2_CONFIG_LOAD_STATUS_MASK) != BMI2_CONFIG_LOAD_SUCCESS) {
-        ESP_LOGE(TAG, "BMI270 config load failed (INTERNAL_STATUS=0x%02X)", load_status);
-        i2c_master_bus_rm_device(bmi270_dev_);
-        bmi270_dev_ = nullptr;
-        return false;
-    }
-
-    reg_write(kBmiRegAccConf, kBmiAccGyrConf);
-    reg_write(kBmiRegGyrConf, kBmiAccGyrConf);
-    reg_write(BMI2_PWR_CTRL_ADDR, BMI2_ACC_EN_MASK | BMI2_GYR_EN_MASK | BMI2_TEMP_EN_MASK);
+    const uint8_t sens_list[2] = {BMI2_ACCEL, BMI2_GYRO};
+    bmi2_sensor_enable(sens_list, 2, &s_bmi2_dev);
 
     ESP_LOGI(TAG, "BMI270 ready at 0x%02X (accel +/-2g, gyro +/-2000dps, 100 Hz)", kBmi270Addr);
     return true;
@@ -260,25 +291,22 @@ bool SensorMonitor::ReadBmi270(MotionSensorData& data) {
     if (bmi270_dev_ == nullptr) return false;
     data.available = true;
 
-    uint8_t buf[12] = {0};
-    if (!ReadRegs(bmi270_dev_, kBmiRegDataStart, buf, sizeof(buf), 100)) {
+    struct bmi2_sens_data sens_data = {};
+    int8_t rslt = bmi2_get_sensor_data(&sens_data, &s_bmi2_dev);
+    if (rslt != BMI2_OK) {
         return false;
     }
 
-    const int16_t raw_ax = static_cast<int16_t>(buf[0] | (buf[1] << 8));
-    const int16_t raw_ay = static_cast<int16_t>(buf[2] | (buf[3] << 8));
-    const int16_t raw_az = static_cast<int16_t>(buf[4] | (buf[5] << 8));
-    const int16_t raw_gx = static_cast<int16_t>(buf[6] | (buf[7] << 8));
-    const int16_t raw_gy = static_cast<int16_t>(buf[8] | (buf[9] << 8));
-    const int16_t raw_gz = static_cast<int16_t>(buf[10] | (buf[11] << 8));
+    data.accel_x = static_cast<float>(sens_data.acc.x) / kBmi270AccLsbPerG;
+    data.accel_y = static_cast<float>(sens_data.acc.y) / kBmi270AccLsbPerG;
+    data.accel_z = static_cast<float>(sens_data.acc.z) / kBmi270AccLsbPerG;
 
-    data.accel_x = Bmi270AccelG(raw_ax);
-    data.accel_y = Bmi270AccelG(raw_ay);
-    data.accel_z = Bmi270AccelG(raw_az);
-    data.gyro_x = Bmi270GyroDps(raw_gx);
-    data.gyro_y = Bmi270GyroDps(raw_gy);
-    data.gyro_z = Bmi270GyroDps(raw_gz);
+    data.gyro_x = static_cast<float>(sens_data.gyr.x) / kBmi270GyrLsbPerDps;
+    data.gyro_y = static_cast<float>(sens_data.gyr.y) / kBmi270GyrLsbPerDps;
+    data.gyro_z = static_cast<float>(sens_data.gyr.z) / kBmi270GyrLsbPerDps;
 
+    data.roll_deg = RollDegrees(data.accel_x, data.accel_y, data.accel_z);
+    data.pitch_deg = PitchDegrees(data.accel_x, data.accel_y, data.accel_z);
     data.tilt_degrees = TiltDegrees(data.accel_x, data.accel_y, data.accel_z);
     data.posture = std::string(PostureFace(data.accel_x, data.accel_y, data.accel_z)) +
                    " - nghiêng " + std::to_string(static_cast<int>(data.tilt_degrees)) + "°";
@@ -297,6 +325,33 @@ CoreS3SensorSnapshot SensorMonitor::GetSnapshot() {
         snapshot.power.is_charging = pmic_->IsCharging();
         snapshot.power.is_discharging = pmic_->IsDischarging();
         snapshot.power.temperature_c = pmic_->GetTemperature();
+    }
+    if (axp2101_dev_ != nullptr) {
+        uint8_t data[2] = {0};
+        // 0x34: VBAT voltage
+        if (ReadRegs(axp2101_dev_, 0x34, data, 2, 50)) {
+            snapshot.power.vbat_mv = ((data[0] & 0x3F) << 8) | data[1];
+        }
+        // 0x38: VBUS voltage
+        if (ReadRegs(axp2101_dev_, 0x38, data, 2, 50)) {
+            snapshot.power.vbus_mv = ((data[0] & 0x3F) << 8) | data[1];
+        }
+        // 0x3A: VSYS voltage
+        if (ReadRegs(axp2101_dev_, 0x3A, data, 2, 50)) {
+            snapshot.power.vsys_mv = ((data[0] & 0x3F) << 8) | data[1];
+        }
+        // 0x3C: TDIE (internal temperature)
+        if (ReadRegs(axp2101_dev_, 0x3C, data, 2, 50)) {
+            snapshot.power.temperature_c = 22.0f + ((7274.0f - static_cast<float>((data[0] << 8) | data[1])) / 20.0f);
+        }
+        // 0x00: VBUS present bit 5
+        uint8_t reg0 = 0;
+        if (ReadRegs(axp2101_dev_, 0x00, &reg0, 1, 50)) {
+            snapshot.power.vbus_present = (reg0 & 0b00100000) != 0;
+            if (!snapshot.power.vbus_present || snapshot.power.vbus_mv >= 16375) {
+                snapshot.power.vbus_mv = 0;
+            }
+        }
     }
 
     // 2. Doc du lieu tu LTR-553ALS va BMI270
@@ -337,6 +392,7 @@ CoreS3SensorSnapshot SensorMonitor::GetSnapshot() {
     // CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ is the clock the firmware was built for;
     // there is no esp_clk_cpu_freq() in this IDF.
     snapshot.system.cpu_freq_mhz = CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ;
+    snapshot.peripherals = peripherals_;
 
     return snapshot;
 }
@@ -348,6 +404,10 @@ std::string SensorMonitor::GetAllSensorsJson() {
     // Power & Battery
     cJSON* pwr = cJSON_CreateObject();
     cJSON_AddNumberToObject(pwr, "battery_level_percent", s.power.battery_level);
+    cJSON_AddNumberToObject(pwr, "vbat_mv", s.power.vbat_mv);
+    cJSON_AddNumberToObject(pwr, "vbus_mv", s.power.vbus_mv);
+    cJSON_AddNumberToObject(pwr, "vsys_mv", s.power.vsys_mv);
+    cJSON_AddBoolToObject(pwr, "vbus_present", s.power.vbus_present);
     cJSON_AddBoolToObject(pwr, "is_charging", s.power.is_charging);
     cJSON_AddBoolToObject(pwr, "is_discharging", s.power.is_discharging);
     cJSON_AddNumberToObject(pwr, "board_temperature_celsius", s.power.temperature_c);
@@ -386,10 +446,33 @@ std::string SensorMonitor::GetAllSensorsJson() {
         cJSON_AddNumberToObject(gyro, "z_dps", s.motion.gyro_z);
         cJSON_AddItemToObject(motion, "gyroscope", gyro);
 
+        cJSON_AddNumberToObject(motion, "roll_deg", s.motion.roll_deg);
+        cJSON_AddNumberToObject(motion, "pitch_deg", s.motion.pitch_deg);
         cJSON_AddNumberToObject(motion, "tilt_degrees", s.motion.tilt_degrees);
         cJSON_AddStringToObject(motion, "posture", s.motion.posture.c_str());
     }
     cJSON_AddItemToObject(root, "motion_imu", motion);
+
+    // Ports and Peripherals
+    cJSON* peri = cJSON_CreateObject();
+    cJSON_AddNumberToObject(peri, "total_online_ics", s.peripherals.total_online);
+    cJSON* ics = cJSON_CreateObject();
+    cJSON_AddBoolToObject(ics, "axp2101_pmic", s.peripherals.pmic_ok);
+    cJSON_AddBoolToObject(ics, "bmi270_imu", s.peripherals.imu_ok);
+    cJSON_AddBoolToObject(ics, "ltr553_light", s.peripherals.light_ok);
+    cJSON_AddBoolToObject(ics, "ft6336_touch", s.peripherals.touch_ok);
+    cJSON_AddBoolToObject(ics, "aw88298_amp", s.peripherals.amp_ok);
+    cJSON_AddBoolToObject(ics, "es7210_mic_adc", s.peripherals.mic_adc_ok);
+    cJSON_AddBoolToObject(ics, "aw9523_io_exp", s.peripherals.io_exp_ok);
+    cJSON_AddBoolToObject(ics, "bm8563_rtc", s.peripherals.rtc_ok);
+    cJSON_AddItemToObject(peri, "internal_bus", ics);
+
+    cJSON* ports = cJSON_CreateObject();
+    cJSON_AddStringToObject(ports, "port_a", "I2C [GPIO 1 SCL, GPIO 2 SDA]");
+    cJSON_AddStringToObject(ports, "port_b", "GPIO [GPIO 8, GPIO 9]");
+    cJSON_AddStringToObject(ports, "port_c", "UART [GPIO 18 TX, GPIO 17 RX]");
+    cJSON_AddItemToObject(peri, "grove_ports", ports);
+    cJSON_AddItemToObject(root, "ports_and_peripherals", peri);
 
     // System Telemetry
     cJSON* sys = cJSON_CreateObject();

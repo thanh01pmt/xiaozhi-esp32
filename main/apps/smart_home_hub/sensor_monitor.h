@@ -9,6 +9,10 @@
 
 struct PowerSensorData {
     int battery_level = 0;       // %
+    uint16_t vbat_mv = 0;        // mV
+    uint16_t vbus_mv = 0;        // mV
+    uint16_t vsys_mv = 0;        // mV
+    bool vbus_present = false;
     bool is_charging = false;
     bool is_discharging = false;
     float temperature_c = 0.0f;  // Nhiet do PMIC / Bo mach (°C)
@@ -43,8 +47,23 @@ struct MotionSensorData {
     float gyro_x = 0.0f;        // Con quay hoi chuyen X (dps)
     float gyro_y = 0.0f;        // Con quay hoi chuyen Y (dps)
     float gyro_z = 0.0f;        // Con quay hoi chuyen Z (dps)
+    float roll_deg = 0.0f;      // Goc Roll (-180..+180)
+    float pitch_deg = 0.0f;     // Goc Pitch (-90..+90)
+    float heading_deg = 0.0f;   // Huong la ban (0..360)
     float tilt_degrees = 0.0f;  // Goc nghieng so voi mat phang (0-90 do)
     std::string posture = "Chua co du lieu";
+};
+
+struct PortPeripheralData {
+    bool pmic_ok = false;     // 0x34 AXP2101
+    bool imu_ok = false;      // 0x69 BMI270
+    bool light_ok = false;    // 0x23 LTR-553ALS
+    bool touch_ok = false;    // 0x38 FT6336
+    bool amp_ok = false;      // 0x36 AW88298
+    bool mic_adc_ok = false;  // 0x40 ES7210
+    bool io_exp_ok = false;   // 0x58 AW9523
+    bool rtc_ok = false;      // 0x51 BM8563
+    int total_online = 0;
 };
 
 struct CoreS3SensorSnapshot {
@@ -53,6 +72,7 @@ struct CoreS3SensorSnapshot {
     SystemSensorData system;
     LightSensorData light;
     MotionSensorData motion;
+    PortPeripheralData peripherals;
 };
 
 class SensorMonitor {
@@ -70,11 +90,13 @@ private:
     SensorMonitor() = default;
     Axp2101* pmic_ = nullptr;
     i2c_master_bus_handle_t i2c_bus_ = nullptr;
+    i2c_master_dev_handle_t axp2101_dev_ = nullptr;
     i2c_master_dev_handle_t ltr553_dev_ = nullptr;
     i2c_master_dev_handle_t bmi270_dev_ = nullptr;
     bool ltr553_available_ = false;
     bool bmi270_available_ = false;
     bool initialized_ = false;
+    PortPeripheralData peripherals_ = {};
     // GetSnapshot() is called from the MCP thread, the app loop and the LVGL
     // timers; the shared I2C bus must only be driven by one of them at a time.
     SemaphoreHandle_t i2c_mutex_ = nullptr;

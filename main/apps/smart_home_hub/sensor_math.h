@@ -74,6 +74,15 @@ inline float TiltDegrees(float ax, float ay, float az) {
     return std::acos(vertical < 1.0f ? vertical : 1.0f) * 180.0f / 3.14159265f;
 }
 
+inline float RollDegrees(float ax, float ay, float az) {
+    (void)ax;
+    return std::atan2(ay, az) * 180.0f / 3.14159265f;
+}
+
+inline float PitchDegrees(float ax, float ay, float az) {
+    return std::atan2(-ax, std::sqrt(ay * ay + az * az)) * 180.0f / 3.14159265f;
+}
+
 // Which face is pointing down, in the wording the dashboard shows.
 inline const char* PostureFace(float ax, float ay, float az) {
     const float x = std::fabs(ax);

@@ -13,6 +13,7 @@
 #include "ui/sensor_card_screen.h"
 #include "ui/camera_preview_screen.h"
 #include "ui/emotion_eye_screen.h"
+#include "ui/wifi_config_screen.h"
 #include "web_config_server.h"
 
 enum class DefaultScreenMode {
@@ -45,6 +46,9 @@ public:
     void HideEmotionEyes();
     void SetEmotionEyes(EyeEmotion emotion);
     void SetEmotionEyesByName(const std::string& name);
+
+    void ShowWifiConfig();
+    void HideWifiConfig();
 
     // Screen navigation
     bool SwitchScreen(const std::string& screen_name);
@@ -80,6 +84,7 @@ public:
     SensorCardScreen& GetSensorCard() { return sensor_card_screen_; }
     CameraPreviewScreen& GetCameraPreview() { return camera_preview_screen_; }
     EmotionEyeScreen& GetEmotionEyeScreen() { return emotion_eye_screen_; }
+    WifiConfigScreen& GetWifiConfigScreen() { return wifi_config_screen_; }
     SmartHomeNetworkClient& GetNetworkClient() { return network_client_; }
     SmartHomeBleController& GetBleController() { return ble_controller_; }
     WebConfigServer& GetWebServer() { return web_server_; }
@@ -99,6 +104,7 @@ private:
     SensorCardScreen sensor_card_screen_;
     CameraPreviewScreen camera_preview_screen_;
     EmotionEyeScreen emotion_eye_screen_;
+    WifiConfigScreen wifi_config_screen_;
     WebConfigServer web_server_;
     std::vector<SmartDevice> devices_;
 

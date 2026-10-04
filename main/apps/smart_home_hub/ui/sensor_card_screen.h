@@ -4,12 +4,14 @@
 #include <lvgl.h>
 #include <esp_timer.h>
 #include <string>
+#include <functional>
 
 enum class SensorCardType {
     Temperature,
     Battery,
     Light,
     Motion,
+    Peripherals,
     Network,
     System,
     kCount
@@ -28,6 +30,7 @@ public:
     void ShowRelative(int delta);
     bool IsVisible() const { return visible_; }
     void UpdateData();
+    void SetOpenWifiConfigCallback(std::function<void()> cb) { on_open_wifi_config_ = std::move(cb); }
 
 private:
     void CreateUI();
@@ -69,6 +72,14 @@ private:
     lv_obj_t* left_column_ = nullptr;
     lv_obj_t* right_column_ = nullptr;
     lv_obj_t* wifi_bars_[4] = {nullptr, nullptr, nullptr, nullptr};
+    lv_obj_t* wifi_scan_btn_ = nullptr;
+
+    // Spirit level widget for IMU
+    lv_obj_t* spirit_outer_ = nullptr;
+    lv_obj_t* spirit_cross_h_ = nullptr;
+    lv_obj_t* spirit_cross_v_ = nullptr;
+    lv_obj_t* spirit_inner_ring_ = nullptr;
+    lv_obj_t* spirit_bubble_ = nullptr;
 
     // Footer
     lv_obj_t* dots_[static_cast<int>(SensorCardType::kCount)] = {};
@@ -81,6 +92,7 @@ private:
     esp_timer_handle_t update_timer_ = nullptr;
     esp_timer_handle_t auto_return_timer_ = nullptr;
     bool visible_ = false;
+    std::function<void()> on_open_wifi_config_;
 };
 
 #endif // SENSOR_CARD_SCREEN_H

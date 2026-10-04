@@ -29,7 +29,11 @@ void SmartHomeHub::Initialize(lv_display_t* lv_display) {
         });
         sensor_dashboard_screen_.Initialize(lv_display);
         sensor_card_screen_.Initialize(lv_display);
+        sensor_card_screen_.SetOpenWifiConfigCallback([this]() {
+            ShowWifiConfig();
+        });
         camera_preview_screen_.Initialize(lv_display);
+        wifi_config_screen_.Initialize(lv_display);
         // A tap on a dashboard card opens that sensor's own screen. The hub
         // stays the one place that knows how to swap screens.
         sensor_dashboard_screen_.SetOpenCardCallback([this](const std::string& sensor_type) {
@@ -94,6 +98,7 @@ void SmartHomeHub::ToggleDashboard() {
         sensor_dashboard_screen_.Hide();
         sensor_card_screen_.Hide();
         camera_preview_screen_.Hide();
+        wifi_config_screen_.Hide();
         dashboard_screen_.Show();
     }
 }
@@ -102,6 +107,7 @@ void SmartHomeHub::ShowDashboard() {
     sensor_dashboard_screen_.Hide();
     sensor_card_screen_.Hide();
     camera_preview_screen_.Hide();
+    wifi_config_screen_.Hide();
     dashboard_screen_.ReloadDevices(devices_);
     dashboard_screen_.Show();
 }
@@ -114,6 +120,7 @@ void SmartHomeHub::ShowSensorDashboard() {
     dashboard_screen_.Hide();
     sensor_card_screen_.Hide();
     camera_preview_screen_.Hide();
+    wifi_config_screen_.Hide();
     sensor_dashboard_screen_.Show();
 }
 
@@ -160,6 +167,7 @@ void SmartHomeHub::ShowSensorCard(const std::string& sensor_type) {
     dashboard_screen_.Hide();
     sensor_dashboard_screen_.Hide();
     camera_preview_screen_.Hide();
+    wifi_config_screen_.Hide();
 
     SensorCardType type = SensorCardType::Temperature;
     bool matched = sensor_type == "temperature" || sensor_type == "temp" || sensor_type == "nhiet_do";
@@ -171,6 +179,9 @@ void SmartHomeHub::ShowSensorCard(const std::string& sensor_type) {
         matched = true;
     } else if (sensor_type == "motion" || sensor_type == "imu" || sensor_type == "chuyen_dong" || sensor_type == "tu_the") {
         type = SensorCardType::Motion;
+        matched = true;
+    } else if (sensor_type == "peripherals" || sensor_type == "peripheral" || sensor_type == "ports" || sensor_type == "port" || sensor_type == "ngoai_vi") {
+        type = SensorCardType::Peripherals;
         matched = true;
     } else if (sensor_type == "network" || sensor_type == "wifi" || sensor_type == "mang") {
         type = SensorCardType::Network;
@@ -199,6 +210,7 @@ void SmartHomeHub::ShowCameraPreview() {
     sensor_dashboard_screen_.Hide();
     sensor_card_screen_.Hide();
     emotion_eye_screen_.Hide();
+    wifi_config_screen_.Hide();
     camera_preview_screen_.Show();
 }
 
@@ -211,11 +223,25 @@ void SmartHomeHub::ShowEmotionEyes() {
     sensor_dashboard_screen_.Hide();
     sensor_card_screen_.Hide();
     camera_preview_screen_.Hide();
+    wifi_config_screen_.Hide();
     emotion_eye_screen_.Show();
 }
 
 void SmartHomeHub::HideEmotionEyes() {
     emotion_eye_screen_.Hide();
+}
+
+void SmartHomeHub::ShowWifiConfig() {
+    dashboard_screen_.Hide();
+    sensor_dashboard_screen_.Hide();
+    sensor_card_screen_.Hide();
+    camera_preview_screen_.Hide();
+    emotion_eye_screen_.Hide();
+    wifi_config_screen_.Show();
+}
+
+void SmartHomeHub::HideWifiConfig() {
+    wifi_config_screen_.Hide();
 }
 
 void SmartHomeHub::SetEmotionEyes(EyeEmotion emotion) {
@@ -286,6 +312,7 @@ void SmartHomeHub::ReturnToDefaultScreen() {
         HideSensorCard();
         HideCameraPreview();
         HideEmotionEyes();
+        HideWifiConfig();
     }
 }
 
@@ -314,6 +341,10 @@ bool SmartHomeHub::SwitchScreen(const std::string& screen_name) {
         emotion_eye_screen_.Hide();
         ShowSensorCard("motion");
         return true;
+    } else if (screen_name == "peripherals" || screen_name == "peripheral" || screen_name == "ports" || screen_name == "port" || screen_name == "ngoai_vi") {
+        emotion_eye_screen_.Hide();
+        ShowSensorCard("peripherals");
+        return true;
     } else if (screen_name == "network" || screen_name == "wifi" || screen_name == "mang") {
         emotion_eye_screen_.Hide();
         ShowSensorCard("network");
@@ -321,6 +352,10 @@ bool SmartHomeHub::SwitchScreen(const std::string& screen_name) {
     } else if (screen_name == "system" || screen_name == "ram" || screen_name == "he_thong") {
         emotion_eye_screen_.Hide();
         ShowSensorCard("system");
+        return true;
+    } else if (screen_name == "wifi_config" || screen_name == "wifi_scan" || screen_name == "scan_wifi" || screen_name == "wifi_connect") {
+        emotion_eye_screen_.Hide();
+        ShowWifiConfig();
         return true;
     } else if (screen_name == "smarthome" || screen_name == "home" || screen_name == "dashboard" || screen_name == "nha_thong_minh") {
         emotion_eye_screen_.Hide();
@@ -337,6 +372,7 @@ bool SmartHomeHub::SwitchScreen(const std::string& screen_name) {
         HideSensorCard();
         HideCameraPreview();
         HideEmotionEyes();
+        HideWifiConfig();
         return true;
     } else if (screen_name == "default" || screen_name == "mac_dinh" || screen_name == "quay_lai") {
         ReturnToDefaultScreen();
@@ -377,8 +413,13 @@ std::string SmartHomeHub::ListScreensJson() {
     cJSON_AddStringToObject(s4, "description", "Mở chế độ xem trước video camera trực tiếp (real-time live stream) trước khi chụp ảnh hoặc hỏi AI.");
     cJSON_AddItemToArray(root, s4);
 
-    // The six single-sensor cards. Without these the model has no way to know
-    // they exist, so asking about one sensor only ever reached "sensors".
+    cJSON* s5 = cJSON_CreateObject();
+    cJSON_AddStringToObject(s5, "id", "wifi_config");
+    cJSON_AddStringToObject(s5, "name", "Màn hình Quét & Kết nối Wi-Fi");
+    cJSON_AddStringToObject(s5, "description", "Màn hình quét danh sách mạng Wi-Fi xung quanh, nhập mật khẩu kết nối hoặc bật Web Portal AP mode.");
+    cJSON_AddItemToArray(root, s5);
+
+    // Single-sensor cards.
     struct CardScreen {
         const char* id;
         const char* name;
@@ -389,6 +430,7 @@ std::string SmartHomeHub::ListScreensJson() {
         {"battery", "Màn hình Pin & Sạc", "Thẻ đơn mức pin, trạng thái sạc và nhiệt độ."},
         {"light", "Màn hình Ánh sáng", "Thẻ đơn cường độ ánh sáng (Lux) và cảm biến tiếm cận."},
         {"motion", "Màn hình Cảm biến IMU", "Thẻ đơn gia tốc, con quay 6 trục và góc nghiêng máy."},
+        {"peripherals", "Màn hình Ngoại vi & Cổng kết nối", "Thẻ đơn trạng thái chip I2C nội bộ và các cổng Port A, B, C, nguồn 5V."},
         {"network", "Màn hình Wi-Fi", "Thẻ đơn SSID, địa chỉ IP, cường độ tín hiệu."},
         {"system", "Màn hình Hệ thống", "Thẻ đơn RAM, PSRAM, tần số CPU và thời gian hoạt động."},
     };

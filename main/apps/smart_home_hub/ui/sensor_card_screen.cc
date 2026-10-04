@@ -61,9 +61,10 @@ struct TypeStyle {
 constexpr int kTypeCount = static_cast<int>(SensorCardType::kCount);
 const TypeStyle kStyles[kTypeCount] = {
     /* Temperature */ {kOrange, "TEMPERATURE", "C", false, true, false, false, 20, 60},
-    /* Battery     */ {kGreen, "BATTERY", "%", true, false, false, false, 0, 100},
+    /* Battery     */ {kGreen, "BATTERY", "%", true, false, true, false, 0, 100},
     /* Light       */ {kYellow, "LIGHT", "lux", true, true, false, false, 0, 1000},
-    /* Motion      */ {kGreen, "IMU (ACC + GYR)", "", false, false, true, false, 0, 100},
+    /* Motion      */ {kGreen, "IMU (ACC + GYR)", "deg", false, false, true, false, 0, 100},
+    /* Peripherals */ {kCyan, "PORTS & BUS", "", false, false, true, false, 0, 100},
     /* Network     */ {kBlue, "Wi-Fi", "", false, false, true, true, 0, 100},
     /* System      */ {kCyan, "SYSTEM", "", false, false, true, false, 0, 100},
 };
@@ -234,13 +235,55 @@ void SensorCardScreen::CreateUI() {
     chart_series_ = lv_chart_add_series(chart_, lv_color_hex(kCyan), LV_CHART_AXIS_PRIMARY_Y);
 
     // ------------------------------------------------------------ axis / rows
-    left_column_ = MakeLabel(frame_, 56, 128, &lv_font_montserrat_14, kText, "");
-    right_column_ = MakeLabel(frame_, 186, 128, &lv_font_montserrat_14, kText, "");
+    left_column_ = MakeLabel(frame_, 36, 126, &lv_font_montserrat_14, kText, "");
+    right_column_ = MakeLabel(frame_, 132, 126, &lv_font_montserrat_14, kText, "");
     for (int i = 0; i < 4; i++) {
         lv_obj_t* b = MakeBox(frame_, 252 + i * 13, 84 - (10 + i * 6), 8, 10 + i * 6, kDim, 2);
         lv_obj_set_style_bg_opa(b, LV_OPA_40, 0);
         wifi_bars_[i] = b;
     }
+
+    wifi_scan_btn_ = lv_btn_create(frame_);
+    lv_obj_set_pos(wifi_scan_btn_, 206, 136);
+    lv_obj_set_size(wifi_scan_btn_, 92, 30);
+    lv_obj_set_style_bg_color(wifi_scan_btn_, lv_color_hex(0x1F2A38), 0);
+    lv_obj_set_style_border_width(wifi_scan_btn_, 1, 0);
+    lv_obj_set_style_border_color(wifi_scan_btn_, lv_color_hex(kCyan), 0);
+    lv_obj_set_style_radius(wifi_scan_btn_, 6, 0);
+    lv_obj_t* scan_btn_lbl = lv_label_create(wifi_scan_btn_);
+    lv_label_set_text(scan_btn_lbl, LV_SYMBOL_WIFI " SCAN");
+    lv_obj_set_style_text_font(scan_btn_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(scan_btn_lbl, lv_color_hex(kCyan), 0);
+    lv_obj_center(scan_btn_lbl);
+    lv_obj_add_event_cb(
+        wifi_scan_btn_,
+        [](lv_event_t* e) {
+            auto self = static_cast<SensorCardScreen*>(lv_event_get_user_data(e));
+            if (self && self->on_open_wifi_config_) {
+                self->Hide();
+                self->on_open_wifi_config_();
+            }
+        },
+        LV_EVENT_CLICKED, this);
+
+    // Spirit level widget for IMU (70x70 circular crosshair + bubble)
+    spirit_outer_ = MakeBox(frame_, 226, 124, 70, 70, kTrackBg, LV_RADIUS_CIRCLE);
+    lv_obj_set_style_border_width(spirit_outer_, 2, 0);
+    lv_obj_set_style_border_color(spirit_outer_, lv_color_hex(kCyan), 0);
+
+    spirit_cross_h_ = MakeBox(spirit_outer_, 0, 34, 70, 1, kDim, 0);
+    lv_obj_set_style_bg_opa(spirit_cross_h_, LV_OPA_50, 0);
+    spirit_cross_v_ = MakeBox(spirit_outer_, 34, 0, 1, 70, kDim, 0);
+    lv_obj_set_style_bg_opa(spirit_cross_v_, LV_OPA_50, 0);
+
+    spirit_inner_ring_ = MakeBox(spirit_outer_, 21, 21, 28, 28, kTrackBg, LV_RADIUS_CIRCLE);
+    lv_obj_set_style_border_width(spirit_inner_ring_, 1, 0);
+    lv_obj_set_style_border_color(spirit_inner_ring_, lv_color_hex(kDim), 0);
+    lv_obj_set_style_bg_opa(spirit_inner_ring_, LV_OPA_TRANSP, 0);
+
+    spirit_bubble_ = MakeBox(spirit_outer_, 27, 27, 16, 16, kGreen, LV_RADIUS_CIRCLE);
+    lv_obj_set_style_border_width(spirit_bubble_, 1, 0);
+    lv_obj_set_style_border_color(spirit_bubble_, lv_color_hex(kText), 0);
 
     // ----------------------------------------------------------------- footer
     for (int i = 0; i < kTypeCount; i++) {
@@ -308,6 +351,14 @@ void SensorCardScreen::BuildIcon(SensorCardType type) {
             }
             break;
         }
+        case SensorCardType::Peripherals: {
+            lv_obj_t* sym = lv_label_create(icon_box_);
+            lv_label_set_text(sym, LV_SYMBOL_USB);
+            lv_obj_set_style_text_font(sym, kFontBig, 0);
+            lv_obj_set_style_text_color(sym, lv_color_hex(accent), 0);
+            lv_obj_align(sym, LV_ALIGN_LEFT_MID, 0, 0);
+            break;
+        }
         case SensorCardType::Network: {
             lv_obj_t* sym = lv_label_create(icon_box_);
             lv_label_set_text(sym, LV_SYMBOL_WIFI);
@@ -348,9 +399,11 @@ void SensorCardScreen::ApplyType(SensorCardType type) {
     SetVisible(chart_min_, style.chart);
     SetVisible(left_column_, style.columns);
     SetVisible(right_column_, style.columns);
+    SetVisible(spirit_outer_, type == SensorCardType::Motion);
     for (int i = 0; i < 4; i++) {
         SetVisible(wifi_bars_[i], style.wifi_bars);
     }
+    SetVisible(wifi_scan_btn_, type == SensorCardType::Network);
 
     // Restart the sparkline window whenever the page changes.
     chart_min_v_ = style.chart_min;
@@ -413,10 +466,24 @@ void SensorCardScreen::UpdateData() {
                 if (pct < 0) pct = 0;
                 if (pct > 100) pct = 100;
                 lv_label_set_text_fmt(value_label_, "%d", pct);
-                lv_label_set_text(sub_label_, s.power.is_charging     ? "Status  Charging"
-                                      : s.power.is_discharging   ? "Status  On battery"
-                                                                  : "Status  Idle");
+                if (s.power.vbus_present) {
+                    lv_label_set_text_fmt(sub_label_, "USB In: Charging (%.2fV)", s.power.vbus_mv / 1000.0f);
+                } else {
+                    lv_label_set_text(sub_label_, s.power.is_discharging ? "Status: Discharging" : "Status: Battery Idle");
+                }
                 lv_bar_set_value(bar_, pct, LV_ANIM_OFF);
+                lv_label_set_text_fmt(left_column_,
+                                     "BATTERY\n"
+                                     "VBAT  %.2fV\n"
+                                     "VBUS  %.2fV",
+                                     s.power.vbat_mv / 1000.0f,
+                                     s.power.vbus_mv / 1000.0f);
+                lv_label_set_text_fmt(right_column_,
+                                     "SYSTEM\n"
+                                     "VSYS  %.2fV\n"
+                                     "TDIE  %.1f C",
+                                     s.power.vsys_mv / 1000.0f,
+                                     s.power.temperature_c);
                 break;
             }
             case SensorCardType::Light: {
@@ -437,6 +504,9 @@ void SensorCardScreen::UpdateData() {
             }
             case SensorCardType::Motion: {
                 if (s.motion.available) {
+                    lv_label_set_text_fmt(value_label_, "%.0f", s.motion.tilt_degrees);
+                    lv_label_set_text_fmt(sub_label_, "Roll: %+.0f deg   Pitch: %+.0f deg",
+                                          s.motion.roll_deg, s.motion.pitch_deg);
                     lv_label_set_text_fmt(left_column_,
                                          "ACC (g)\n"
                                          "X  %+.2f\n"
@@ -444,17 +514,59 @@ void SensorCardScreen::UpdateData() {
                                          "Z  %+.2f",
                                          s.motion.accel_x, s.motion.accel_y, s.motion.accel_z);
                     lv_label_set_text_fmt(right_column_,
-                                         "GYR (d/s)\n"
-                                         "X  %+.2f\n"
-                                         "Y  %+.2f\n"
-                                         "Z  %+.2f",
+                                         "GYR (dps)\n"
+                                         "X  %+.0f\n"
+                                         "Y  %+.0f\n"
+                                         "Z  %+.0f",
                                          s.motion.gyro_x, s.motion.gyro_y, s.motion.gyro_z);
-                    lv_label_set_text_fmt(sub_label_, "Tilt  %.0f deg", s.motion.tilt_degrees);
+
+                    // Spirit level bubble math:
+                    // spirit_outer_ is 70x70, bubble is 16x16, resting center is (27, 27).
+                    // Moving range: -23 to +23 pixels for pitch (-90..90) and roll (-90..90).
+                    int bx = 27 + static_cast<int>(s.motion.pitch_deg * 23.0f / 90.0f);
+                    int by = 27 + static_cast<int>(s.motion.roll_deg * 23.0f / 90.0f);
+                    if (bx < 4) bx = 4;
+                    if (bx > 50) bx = 50;
+                    if (by < 4) by = 4;
+                    if (by > 50) by = 50;
+                    lv_obj_set_pos(spirit_bubble_, bx, by);
+
+                    const bool is_level = (s.motion.tilt_degrees < 4.0f);
+                    lv_obj_set_style_bg_color(spirit_bubble_, lv_color_hex(is_level ? kGreen : kOrange), 0);
                 } else {
+                    lv_label_set_text(value_label_, "--");
                     lv_label_set_text(left_column_, "ACC (g)\nX  --.--\nY  --.--\nZ  --.--");
-                    lv_label_set_text(right_column_, "GYR (d/s)\nX  --.--\nY  --.--\nZ  --.--");
+                    lv_label_set_text(right_column_, "GYR (dps)\nX  --\nY  --\nZ  --");
                     lv_label_set_text(sub_label_, "IMU not responding");
                 }
+                break;
+            }
+            case SensorCardType::Peripherals: {
+                lv_label_set_text_fmt(value_label_, "%d/8", s.peripherals.total_online);
+                lv_label_set_text(sub_label_, "Port A: Ready | Port B: Ready | Port C: Ready");
+
+                char left_buf[160];
+                snprintf(left_buf, sizeof(left_buf),
+                         "INTERNAL ICs\n"
+                         "PMIC  0x34  %s\n"
+                         "IMU   0x69  %s\n"
+                         "LIGHT 0x23  %s\n"
+                         "TOUCH 0x38  %s",
+                         s.peripherals.pmic_ok ? "OK" : "--",
+                         s.peripherals.imu_ok ? "OK" : "--",
+                         s.peripherals.light_ok ? "OK" : "--",
+                         s.peripherals.touch_ok ? "OK" : "--");
+                lv_label_set_text(left_column_, left_buf);
+
+                char right_buf[160];
+                snprintf(right_buf, sizeof(right_buf),
+                         "GROVE PORTS\n"
+                         "Port A [I2C]  G1/G2\n"
+                         "Port B [GPIO] G8/G9\n"
+                         "Port C [UART] G17/18\n"
+                         "BUS 5V        %s",
+                         s.power.vbus_present ? "USB 5V" : "BATTERY");
+                lv_label_set_text(right_column_, right_buf);
                 break;
             }
             case SensorCardType::Network: {
@@ -529,10 +641,9 @@ void SensorCardScreen::Show(SensorCardType type) {
     ResetAutoReturnTimer();
 
     if (update_timer_ != nullptr) {
-        // The LTR-553 is programmed for a 200 ms repeat rate, so 1 Hz was
-        // throwing away four out of five samples for no reason. Only a handful
-        // of labels change, so the extra flushes stay tiny.
-        esp_timer_start_periodic(update_timer_, 250 * 1000);
+        // 100 ms (10 Hz) provides smooth spirit level animation for IMU
+        // and low CPU overhead for other sensor cards.
+        esp_timer_start_periodic(update_timer_, 100 * 1000);
     }
 }
 

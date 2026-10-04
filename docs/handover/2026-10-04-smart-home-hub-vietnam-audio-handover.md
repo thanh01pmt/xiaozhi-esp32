@@ -1,7 +1,7 @@
 ---
 title: Bàn giao phiên làm việc - Smart Home Hub, Điều khiển Home Assistant & Tích hợp Âm thanh Tiếng Việt trên CoreS3
 type: handover
-status: active
+status: archived
 created: 2026-10-04
 updated: 2026-10-04
 related:
