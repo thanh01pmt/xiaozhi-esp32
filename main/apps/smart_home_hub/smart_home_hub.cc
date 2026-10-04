@@ -195,6 +195,18 @@ void SmartHomeHub::HideSensorCard() {
     sensor_card_screen_.Hide();
 }
 
+void SmartHomeHub::ShowCameraPreview() {
+    dashboard_screen_.Hide();
+    sensor_dashboard_screen_.Hide();
+    sensor_card_screen_.Hide();
+    emotion_eye_screen_.Hide();
+    camera_preview_screen_.Show();
+}
+
+void SmartHomeHub::HideCameraPreview() {
+    camera_preview_screen_.Hide();
+}
+
 void SmartHomeHub::ShowEmotionEyes() {
     dashboard_screen_.Hide();
     sensor_dashboard_screen_.Hide();
