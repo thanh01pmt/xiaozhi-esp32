@@ -14,14 +14,15 @@ DashboardScreen::~DashboardScreen() {
     }
 }
 
+#include "../smart_home_hub.h"
+
 void DashboardScreen::OnAutoReturnTimeout(void* arg) {
     auto self = static_cast<DashboardScreen*>(arg);
     if (self && self->IsVisible()) {
-        // Hide() takes the LVGL lock; the shared esp_timer task must not block on it.
         Application::GetInstance().Schedule([self]() {
             if (self->IsVisible()) {
-                ESP_LOGI(TAG, "Auto-return to XiaoZhi main screen");
-                self->Hide();
+                ESP_LOGI(TAG, "Dashboard auto-return (120s) to default screen (eyes)");
+                SmartHomeHub::GetInstance().ReturnToDefaultScreen();
             }
         });
     }
@@ -176,15 +177,18 @@ void DashboardScreen::ReloadDevices(const std::vector<SmartDevice>& devices) {
 
             if (code == LV_EVENT_CLICKED) {
                 ESP_LOGI(TAG, "Touch card clicked for device: %s", ctx->id.c_str());
-                if (ctx->self && ctx->self->toggle_cb_) {
-                    bool cur_state = false;
-                    for (const auto& d : ctx->self->current_devices_) {
-                        if (d.id == ctx->id) {
-                            cur_state = d.state;
-                            break;
+                if (ctx->self) {
+                    ctx->self->ResetAutoReturnTimer();
+                    if (ctx->self->toggle_cb_) {
+                        bool cur_state = false;
+                        for (const auto& d : ctx->self->current_devices_) {
+                            if (d.id == ctx->id) {
+                                cur_state = d.state;
+                                break;
+                            }
                         }
+                        ctx->self->toggle_cb_(ctx->id, !cur_state);
                     }
-                    ctx->self->toggle_cb_(ctx->id, !cur_state);
                 }
             } else if (code == LV_EVENT_DELETE) {
                 delete ctx;
@@ -221,7 +225,7 @@ void DashboardScreen::Hide() {
 void DashboardScreen::ResetAutoReturnTimer() {
     if (auto_return_timer_ != nullptr) {
         esp_timer_stop(auto_return_timer_);
-        esp_timer_start_once(auto_return_timer_, 30 * 1000 * 1000); // 30s
+        esp_timer_start_once(auto_return_timer_, 120 * 1000 * 1000); // 120s auto return
     }
 }
 

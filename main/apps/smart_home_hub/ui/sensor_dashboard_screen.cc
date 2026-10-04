@@ -126,14 +126,15 @@ void SensorDashboardScreen::OnUpdateTimer(void* arg) {
     }
 }
 
+#include "../smart_home_hub.h"
+
 void SensorDashboardScreen::OnAutoReturnTimeout(void* arg) {
     auto self = static_cast<SensorDashboardScreen*>(arg);
     if (self && self->IsVisible()) {
-        // Hide() takes the LVGL lock; the shared esp_timer task must not block on it.
         Application::GetInstance().Schedule([self]() {
             if (self->IsVisible()) {
-                ESP_LOGI(TAG, "Sensor dashboard auto-return to main screen");
-                self->Hide();
+                ESP_LOGI(TAG, "Sensor dashboard auto-return (120s) to default screen (eyes)");
+                SmartHomeHub::GetInstance().ReturnToDefaultScreen();
             }
         });
     }
@@ -433,7 +434,7 @@ void SensorDashboardScreen::Show() {
     }
     if (auto_return_timer_ != nullptr) {
         esp_timer_stop(auto_return_timer_);
-        esp_timer_start_once(auto_return_timer_, 20 * 1000 * 1000); // 20 giay auto-return
+        esp_timer_start_once(auto_return_timer_, 120 * 1000 * 1000); // 120s auto-return
     }
 }
 

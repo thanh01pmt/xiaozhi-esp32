@@ -3,6 +3,7 @@
 
 #include <lvgl.h>
 #include <esp_wifi.h>
+#include <esp_timer.h>
 #include <vector>
 #include <string>
 
@@ -53,6 +54,10 @@ private:
     lv_obj_t* keyboard_ = nullptr;
     std::string target_ssid_;
 
+    void ResetAutoReturnTimer();
+    static void OnAutoReturnTimeout(void* arg);
+
+    esp_timer_handle_t auto_return_timer_ = nullptr;
     std::vector<ScannedApInfo> ap_list_;
     bool visible_ = false;
     bool scanning_ = false;

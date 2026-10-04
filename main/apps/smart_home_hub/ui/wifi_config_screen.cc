@@ -1,4 +1,5 @@
 #include "wifi_config_screen.h"
+#include "../smart_home_hub.h"
 #include <esp_lvgl_port.h>
 #include <esp_log.h>
 #include <esp_wifi.h>
@@ -25,10 +26,44 @@ constexpr uint32_t kDim = 0x8B949E;
 
 WifiConfigScreen::WifiConfigScreen() = default;
 
-WifiConfigScreen::~WifiConfigScreen() = default;
+WifiConfigScreen::~WifiConfigScreen() {
+    if (auto_return_timer_ != nullptr) {
+        esp_timer_stop(auto_return_timer_);
+        esp_timer_delete(auto_return_timer_);
+    }
+}
+
+void WifiConfigScreen::OnAutoReturnTimeout(void* arg) {
+    auto self = static_cast<WifiConfigScreen*>(arg);
+    if (self && self->IsVisible()) {
+        Application::GetInstance().Schedule([self]() {
+            if (self->IsVisible()) {
+                ESP_LOGI(TAG, "WiFi config auto-return (120s) to default screen (eyes)");
+                SmartHomeHub::GetInstance().ReturnToDefaultScreen();
+            }
+        });
+    }
+}
+
+void WifiConfigScreen::ResetAutoReturnTimer() {
+    if (auto_return_timer_ != nullptr) {
+        esp_timer_stop(auto_return_timer_);
+        esp_timer_start_once(auto_return_timer_, 120 * 1000 * 1000); // 120s auto return
+    }
+}
 
 void WifiConfigScreen::Initialize(lv_display_t* display) {
     display_ = display;
+
+    esp_timer_create_args_t timer_args = {
+        .callback = &WifiConfigScreen::OnAutoReturnTimeout,
+        .arg = this,
+        .dispatch_method = ESP_TIMER_TASK,
+        .name = "wifi_return",
+        .skip_unhandled_events = true,
+    };
+    esp_timer_create(&timer_args, &auto_return_timer_);
+
     if (lvgl_port_lock(200)) {
         CreateUI();
         lvgl_port_unlock();
@@ -215,6 +250,7 @@ void WifiConfigScreen::CreateUI() {
         lv_obj_t* obj = static_cast<lv_obj_t*>(lv_event_get_target(e));
         auto self = static_cast<WifiConfigScreen*>(lv_event_get_user_data(e));
         if (!obj || !self) return;
+        self->ResetAutoReturnTimer();
         uint32_t btn_id = lv_btnmatrix_get_selected_btn(obj);
         const char* txt = lv_btnmatrix_get_btn_text(obj, btn_id);
         if (!txt) return;
@@ -376,11 +412,15 @@ void WifiConfigScreen::Show() {
         HideConnectModal();
         lvgl_port_unlock();
     }
+    ResetAutoReturnTimer();
     StartScan();
 }
 
 void WifiConfigScreen::Hide() {
     if (!visible_ || screen_ == nullptr) return;
+    if (auto_return_timer_ != nullptr) {
+        esp_timer_stop(auto_return_timer_);
+    }
     if (lvgl_port_lock(200)) {
         visible_ = false;
         HideConnectModal();

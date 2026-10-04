@@ -28,17 +28,17 @@ CameraPreviewScreen::~CameraPreviewScreen() {
     }
 }
 
+#include "../smart_home_hub.h"
+
 void CameraPreviewScreen::OnAutoExitTimeout(void* arg) {
     auto self = static_cast<CameraPreviewScreen*>(arg);
     if (!self || !self->IsVisible()) {
         return;
     }
-    // Hide() stops the stream and takes the LVGL lock, neither of which is safe
-    // on the shared esp_timer task.
     Application::GetInstance().Schedule([self]() {
         if (self->IsVisible()) {
-            ESP_LOGI(TAG, "Camera preview timeout -> returning to main screen");
-            self->Hide();
+            ESP_LOGI(TAG, "Camera preview timeout (120s) -> returning to default screen (eyes)");
+            SmartHomeHub::GetInstance().ReturnToDefaultScreen();
         }
     });
 }
@@ -150,7 +150,7 @@ void CameraPreviewScreen::CreateUI() {
 void CameraPreviewScreen::ResetAutoExitTimer() {
     if (auto_exit_timer_ != nullptr) {
         esp_timer_stop(auto_exit_timer_);
-        esp_timer_start_once(auto_exit_timer_, 30 * 1000 * 1000); // 30s auto return
+        esp_timer_start_once(auto_exit_timer_, 120 * 1000 * 1000); // 120s auto return
     }
 }
 

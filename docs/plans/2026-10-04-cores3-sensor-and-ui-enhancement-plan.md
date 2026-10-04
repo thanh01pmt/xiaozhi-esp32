@@ -31,6 +31,8 @@ related: []
 - [x] Màn hình Quét và Kết nối Wi-Fi (`WifiConfigScreen`): danh sách AP scan thời gian thực, hiển thị RSSI dạng icon vạch sóng và dBm, modal nhập mật khẩu bàn phím ảo LVGL, lưu NVS và kết nối ngay, kèm nút bật Web Portal AP mode (`192.168.4.1`).
 - [x] Nút "SCAN" nhanh trên thẻ Wi-Fi trong `SensorCardScreen` để chuyển nhanh vào màn hình quét Wi-Fi.
 - [x] Giữ toàn bộ typography và nhãn kỹ thuật bằng tiếng Anh ASCII chuẩn để tránh vỡ bố cục và lỗi font ký tự.
+- [x] Màn hình biểu cảm hoạt hình (Cute Animated Eye Screen) luôn là màn hình mặc định khi khởi động và nhàn rỗi.
+- [x] Tất cả các màn hình chức năng phụ (Dashboard, Sensor, Camera, Wi-Fi) duy trì hiển thị tối thiểu 120 giây không có tương tác mới tự động trở về màn hình mắt. Mọi tương tác chạm / bấm phím đều reset bộ đếm 120 giây.
 - [x] Firmware biên dịch thành công 100% không lỗi.
 
 ## Các bước
@@ -53,7 +55,11 @@ related: []
    - Hộp thoại Modal nhập mật khẩu với bàn phím cảm ứng ảo LVGL (`lv_keyboard`).
    - Kết nối và lưu NVS tự động qua `SsidManager` và `WifiManager`.
    - Nút bật Web Portal AP mode chuyển sang điểm phát cấu hình web trực quan.
-4. [ ] **Bước 4 — Nạp thử nghiệm trên phần cứng thực tế**:
+4. [x] **Bước 4 — Khôi phục màn hình mắt hoạt hình mặc định và chuẩn hóa thời gian chờ 120s**:
+   - Khắc phục triệt để lỗi rơi về màn hình chat text do NVS ghi đè `def_screen="chat"`.
+   - Đặt `DefaultScreenMode::Eyes` làm mặc định tuyệt đối trong `SmartHomeHub` và `Application::Initialize()`.
+   - Nâng cấp thời gian tự động trở về trên toàn bộ các màn hình phụ (`DashboardScreen`, `SensorDashboardScreen`, `SensorCardScreen`, `CameraPreviewScreen`, `WifiConfigScreen`) từ 15-30s lên 120s không tương tác.
+5. [ ] **Bước 5 — Nạp thử nghiệm trên phần cứng thực tế**:
    - Chờ người dùng cắm M5Stack CoreS3 qua cổng USB-C.
    - Chạy lệnh nạp `./docs/setup/flash_cores3.sh /dev/cu.usbmodem* all` hoặc `python3 $IDF_PATH/tools/idf.py -p <PORT> flash monitor`.
 
@@ -62,3 +68,4 @@ related: []
 - 2026-10-04: Khởi tạo kế hoạch nâng cấp toàn diện dựa trên tài nguyên `CoreS3-UserDemo`.
 - 2026-10-04: Hoàn thành bước 1 (Driver BMI270 & AXP2101 ADC) và bước 2 (Giao diện Spirit Level & Power Monitor trên SensorCardScreen). Biên dịch thành công `xiaozhi.bin`.
 - 2026-10-04: Thêm màn hình Peripheral Ports & Bus và màn hình Wi-Fi Scan & Connect (`WifiConfigScreen`) với bàn phím ảo và Web Portal AP. Chuyển toàn bộ typography sang tiếng Anh ASCII chuẩn.
+- 2026-10-04: Khôi phục màn hình Animated Eye View làm mặc định khi khởi động và nhàn rỗi; nâng thời gian hiển thị các màn hình khác lên tối thiểu 120 giây không tương tác mới tự động chuyển về mắt.

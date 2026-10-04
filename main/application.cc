@@ -367,9 +367,7 @@ void Application::HandleActivationDoneEvent() {
             // Play the success sound to indicate the device is ready
             audio_service_.PlaySound(Lang::Sounds::OGG_SUCCESS);
 #if CONFIG_ENABLE_SMART_HOME_HUB
-            if (SmartHomeHub::GetInstance().GetDefaultScreenMode() == DefaultScreenMode::Eyes) {
-                SmartHomeHub::GetInstance().ShowEmotionEyes();
-            }
+            SmartHomeHub::GetInstance().ShowEmotionEyes();
 #endif
         });
     }

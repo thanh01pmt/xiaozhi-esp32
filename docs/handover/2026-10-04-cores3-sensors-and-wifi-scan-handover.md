@@ -41,6 +41,18 @@ Phiên làm việc tiếp nhận yêu cầu nâng cấp toàn diện các tính 
   - Modal kết nối: Chạm vào AP để mở ô nhập mật khẩu, tích hợp bàn phím ảo LVGL `lv_btnmatrix` (chữ số, chữ cái, phím lùi, xóa nhanh, phím cách, OK).
   - Tự động lưu NVS qua `SsidManager` và kết nối với `WifiManager`.
   - Nút `Web Portal` giúp kích hoạt nhanh Config AP (`192.168.4.1`) cho người dùng muốn cấu hình từ trình duyệt.
+- [x] **Khôi phục Màn hình Mắt Hoạt hình (Eye View) làm mặc định tuyệt đối**:
+  - `SmartHomeHub::LoadSettings()`: Khắc phục triệt để giá trị cũ trong NVS (`def_screen="chat"`), cưỡng chế `DefaultScreenMode::Eyes` và ghi lại NVS.
+  - `Application::Initialize()` & `Application::HandleActivationDoneEvent()`: Gọi `SmartHomeHub::ReturnToDefaultScreen()` / `ShowEmotionEyes()` ngay khi khởi động và sau kích hoạt.
+  - Tất cả alias chuyển màn hình (`"main"`, `"tro_ly"`, `"xiaozhi"`, `"chinh"`, `"eyes"`, `"eye"`) đều chuyển đến `ShowEmotionEyes()`.
+- [x] **Cấu hình thời gian hiển thị tối thiểu 120 giây không tương tác**:
+  - Chuẩn hóa toàn bộ bộ đếm thời gian tự động trở về trên mọi màn hình:
+    - [`main/apps/smart_home_hub/ui/dashboard_screen.cc`](file:///Users/tonypham/MEGA/IDF/xiaozhi-esp32/main/apps/smart_home_hub/ui/dashboard_screen.cc): 120s (trước là 30s).
+    - [`main/apps/smart_home_hub/ui/sensor_dashboard_screen.cc`](file:///Users/tonypham/MEGA/IDF/xiaozhi-esp32/main/apps/smart_home_hub/ui/sensor_dashboard_screen.cc): 120s (trước là 20s).
+    - [`main/apps/smart_home_hub/ui/sensor_card_screen.cc`](file:///Users/tonypham/MEGA/IDF/xiaozhi-esp32/main/apps/smart_home_hub/ui/sensor_card_screen.cc): 120s (trước là 15s).
+    - [`main/apps/smart_home_hub/ui/camera_preview_screen.cc`](file:///Users/tonypham/MEGA/IDF/xiaozhi-esp32/main/apps/smart_home_hub/ui/camera_preview_screen.cc): 120s (trước là 30s).
+    - [`main/apps/smart_home_hub/ui/wifi_config_screen.cc`](file:///Users/tonypham/MEGA/IDF/xiaozhi-esp32/main/apps/smart_home_hub/ui/wifi_config_screen.cc): Bổ sung `esp_timer` 120s, tự động reset khi gõ phím / quét Wi-Fi.
+  - Mọi thao tác chạm hoặc nhập liệu đều tự động reset timer 120s. Khi hết 120s không tương tác, hệ thống tự động gọi `SmartHomeHub::ReturnToDefaultScreen()`, chuyển về màn hình biểu cảm mắt hoạt hình.
 - [x] **Tích hợp Điều hướng & MCP Server** ([`main/apps/smart_home_hub/smart_home_hub.cc`](file:///Users/tonypham/MEGA/IDF/xiaozhi-esp32/main/apps/smart_home_hub/smart_home_hub.cc)):
   - Hỗ trợ các lệnh chuyển màn hình: `"wifi_config"`, `"wifi_scan"`, `"scan_wifi"`, `"peripherals"`, `"ports"`.
   - Cập nhật danh sách màn hình trong `ListScreensJson()` và công cụ MCP.

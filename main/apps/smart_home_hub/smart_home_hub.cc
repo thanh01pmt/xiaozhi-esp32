@@ -245,10 +245,24 @@ void SmartHomeHub::HideWifiConfig() {
 }
 
 void SmartHomeHub::SetEmotionEyes(EyeEmotion emotion) {
+    if (!dashboard_screen_.IsVisible() && !sensor_dashboard_screen_.IsVisible() &&
+        !sensor_card_screen_.IsVisible() && !camera_preview_screen_.IsVisible() &&
+        !wifi_config_screen_.IsVisible()) {
+        if (!emotion_eye_screen_.IsVisible()) {
+            emotion_eye_screen_.Show();
+        }
+    }
     emotion_eye_screen_.SetEmotion(emotion);
 }
 
 void SmartHomeHub::SetEmotionEyesByName(const std::string& name) {
+    if (!dashboard_screen_.IsVisible() && !sensor_dashboard_screen_.IsVisible() &&
+        !sensor_card_screen_.IsVisible() && !camera_preview_screen_.IsVisible() &&
+        !wifi_config_screen_.IsVisible()) {
+        if (!emotion_eye_screen_.IsVisible()) {
+            emotion_eye_screen_.Show();
+        }
+    }
     emotion_eye_screen_.SetEmotionByName(name);
 }
 
@@ -285,14 +299,10 @@ void SmartHomeHub::ExecutePendingScreenSwitch() {
 }
 
 void SmartHomeHub::LoadSettings() {
-    Settings settings("smarthome", false);
-    std::string mode = settings.GetString("def_screen", "eyes");
-    if (mode == "chat") {
-        default_screen_mode_ = DefaultScreenMode::Chat;
-    } else {
-        default_screen_mode_ = DefaultScreenMode::Eyes;
-    }
-    ESP_LOGI(TAG, "Loaded default screen mode: %s", (default_screen_mode_ == DefaultScreenMode::Eyes) ? "eyes" : "chat");
+    Settings settings("smarthome", true);
+    default_screen_mode_ = DefaultScreenMode::Eyes;
+    settings.SetString("def_screen", "eyes");
+    ESP_LOGI(TAG, "Default screen mode enforced: eyes (animation)");
 }
 
 void SmartHomeHub::SetDefaultScreenMode(DefaultScreenMode mode) {
@@ -303,22 +313,15 @@ void SmartHomeHub::SetDefaultScreenMode(DefaultScreenMode mode) {
 }
 
 void SmartHomeHub::ReturnToDefaultScreen() {
-    if (default_screen_mode_ == DefaultScreenMode::Eyes) {
-        ShowEmotionEyes();
-        SetEmotionEyes(EyeEmotion::Idle);
-    } else {
-        HideDashboard();
-        HideSensorDashboard();
-        HideSensorCard();
-        HideCameraPreview();
-        HideEmotionEyes();
-        HideWifiConfig();
-    }
+    ShowEmotionEyes();
+    SetEmotionEyes(EyeEmotion::Idle);
 }
 
 bool SmartHomeHub::SwitchScreen(const std::string& screen_name) {
     ESP_LOGI(TAG, "SwitchScreen requested: %s", screen_name.c_str());
-    if (screen_name == "eyes" || screen_name == "eye" || screen_name == "mat" || screen_name == "bieu_cam" || screen_name == "emotion") {
+    if (screen_name == "eyes" || screen_name == "eye" || screen_name == "mat" || screen_name == "bieu_cam" ||
+        screen_name == "emotion" || screen_name == "animation" || screen_name == "main" ||
+        screen_name == "xiaozhi" || screen_name == "chinh" || screen_name == "tro_ly") {
         ShowEmotionEyes();
         return true;
     } else if (screen_name == "sensors" || screen_name == "sensor" || screen_name == "cam_bien" || screen_name == "telemetry") {
@@ -365,8 +368,7 @@ bool SmartHomeHub::SwitchScreen(const std::string& screen_name) {
         emotion_eye_screen_.Hide();
         ShowCameraPreview();
         return true;
-    } else if (screen_name == "main" || screen_name == "xiaozhi" || screen_name == "chinh" ||
-               screen_name == "tro_ly" || screen_name == "chat" || screen_name == "man_hinh_chat") {
+    } else if (screen_name == "chat" || screen_name == "man_hinh_chat" || screen_name == "text") {
         HideDashboard();
         HideSensorDashboard();
         HideSensorCard();
