@@ -131,6 +131,10 @@ void SensorDashboardScreen::OnUpdateTimer(void* arg) {
 void SensorDashboardScreen::OnAutoReturnTimeout(void* arg) {
     auto self = static_cast<SensorDashboardScreen*>(arg);
     if (self && self->IsVisible()) {
+        if (int64_t rem = SmartHomeHub::InactivityRemainingUs(); rem > 0) {
+            esp_timer_start_once(self->auto_return_timer_, rem);
+            return;
+        }
         Application::GetInstance().Schedule([self]() {
             if (self->IsVisible()) {
                 ESP_LOGI(TAG, "Sensor dashboard auto-return (120s) to default screen (eyes)");
@@ -305,17 +309,8 @@ void SensorDashboardScreen::CreateUI() {
     sys_cpu_ = MakeLabel(sys, 8, kRowBH - 18, &lv_font_montserrat_14, kDim, "CPU -- MHz");
     uptime_value_ = MakeRightLabel(sys, kRowBH - 18, kCardW - 8, &lv_font_montserrat_14, kGreen, "--");
 
-    // Touch anywhere to go back to the XiaoZhi main screen.
-    lv_obj_add_flag(screen_, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(
-        screen_,
-        [](lv_event_t* e) {
-            auto self = static_cast<SensorDashboardScreen*>(lv_event_get_user_data(e));
-            if (self) {
-                self->Hide();
-            }
-        },
-        LV_EVENT_CLICKED, this);
+    // No background tap handler: a stray touch must never leave this screen.
+    // Exit = hold the bottom-left corner (SmartHomeHub) or the 120 s timeout.
 }
 
 void SensorDashboardScreen::UpdateTelemetry() {

@@ -35,6 +35,10 @@ void CameraPreviewScreen::OnAutoExitTimeout(void* arg) {
     if (!self || !self->IsVisible()) {
         return;
     }
+    if (int64_t rem = SmartHomeHub::InactivityRemainingUs(); rem > 0) {
+        esp_timer_start_once(self->auto_exit_timer_, rem);
+        return;
+    }
     Application::GetInstance().Schedule([self]() {
         if (self->IsVisible()) {
             ESP_LOGI(TAG, "Camera preview timeout (120s) -> returning to default screen (eyes)");

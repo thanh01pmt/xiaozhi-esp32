@@ -36,6 +36,10 @@ WifiConfigScreen::~WifiConfigScreen() {
 void WifiConfigScreen::OnAutoReturnTimeout(void* arg) {
     auto self = static_cast<WifiConfigScreen*>(arg);
     if (self && self->IsVisible()) {
+        if (int64_t rem = SmartHomeHub::InactivityRemainingUs(); rem > 0) {
+            esp_timer_start_once(self->auto_return_timer_, rem);
+            return;
+        }
         Application::GetInstance().Schedule([self]() {
             if (self->IsVisible()) {
                 ESP_LOGI(TAG, "WiFi config auto-return (120s) to default screen (eyes)");
@@ -103,7 +107,7 @@ void WifiConfigScreen::CreateUI() {
     lv_obj_center(back_lbl);
     lv_obj_add_event_cb(close_btn_, [](lv_event_t* e) {
         auto self = static_cast<WifiConfigScreen*>(lv_event_get_user_data(e));
-        if (self) self->Hide();
+        if (self) SmartHomeHub::GetInstance().ReturnToDefaultScreen();
     }, LV_EVENT_CLICKED, this);
 
     // Title

@@ -1034,7 +1034,12 @@ void Application::HandleStateChangedEvent() {
                 display->SetEmotion(
                     "neutral");  // Then set emotion (wechat mode checks child count)
 #if CONFIG_ENABLE_SMART_HOME_HUB
-                SmartHomeHub::GetInstance().ReturnToDefaultScreen();
+                // The user may be on a sensor/wifi/dashboard screen; an idle
+                // state change (e.g. from a Wi-Fi scan) must not yank them away.
+                // Leaving those screens is the hold gesture or the 120 s timeout.
+                if (!SmartHomeHub::GetInstance().IsOverlayVisible()) {
+                    SmartHomeHub::GetInstance().ReturnToDefaultScreen();
+                }
 #endif
             }
             audio_service_.EnableVoiceProcessing(false);

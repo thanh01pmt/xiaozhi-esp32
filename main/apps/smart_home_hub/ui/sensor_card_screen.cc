@@ -127,6 +127,10 @@ void SensorCardScreen::OnUpdateTimer(void* arg) {
 void SensorCardScreen::OnAutoReturnTimeout(void* arg) {
     auto self = static_cast<SensorCardScreen*>(arg);
     if (self && self->IsVisible()) {
+        if (int64_t rem = SmartHomeHub::InactivityRemainingUs(); rem > 0) {
+            esp_timer_start_once(self->auto_return_timer_, rem);
+            return;
+        }
         Application::GetInstance().Schedule([self]() {
             if (self->IsVisible()) {
                 ESP_LOGI(TAG, "Sensor card auto-return (120s) to default screen (eyes)");
@@ -261,7 +265,6 @@ void SensorCardScreen::CreateUI() {
         [](lv_event_t* e) {
             auto self = static_cast<SensorCardScreen*>(lv_event_get_user_data(e));
             if (self && self->on_open_wifi_config_) {
-                self->Hide();
                 self->on_open_wifi_config_();
             }
         },
@@ -295,16 +298,9 @@ void SensorCardScreen::CreateUI() {
     lv_obj_set_style_text_align(brand, LV_TEXT_ALIGN_RIGHT, 0);
     lv_obj_align(brand, LV_ALIGN_BOTTOM_RIGHT, -kPad, 0);
 
+    // Only swipe is handled on the background; a plain tap does nothing.
+    // Exit = hold the bottom-left corner (SmartHomeHub) or the 120 s timeout.
     lv_obj_add_flag(screen_, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(
-        screen_,
-        [](lv_event_t* e) {
-            auto self = static_cast<SensorCardScreen*>(lv_event_get_user_data(e));
-            if (self) {
-                self->Hide();
-            }
-        },
-        LV_EVENT_CLICKED, this);
     // Swipe left/right walks the six cards. The footer dots already implied
     // pagination but nothing was wired to them.
     lv_obj_add_event_cb(

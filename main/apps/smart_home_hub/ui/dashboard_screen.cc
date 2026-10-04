@@ -19,6 +19,10 @@ DashboardScreen::~DashboardScreen() {
 void DashboardScreen::OnAutoReturnTimeout(void* arg) {
     auto self = static_cast<DashboardScreen*>(arg);
     if (self && self->IsVisible()) {
+        if (int64_t rem = SmartHomeHub::InactivityRemainingUs(); rem > 0) {
+            esp_timer_start_once(self->auto_return_timer_, rem);
+            return;
+        }
         Application::GetInstance().Schedule([self]() {
             if (self->IsVisible()) {
                 ESP_LOGI(TAG, "Dashboard auto-return (120s) to default screen (eyes)");
@@ -78,7 +82,7 @@ void DashboardScreen::CreateUI() {
     lv_obj_center(close_lbl);
     lv_obj_add_event_cb(close_btn, [](lv_event_t* e) {
         auto self = static_cast<DashboardScreen*>(lv_event_get_user_data(e));
-        if (self) self->Hide();
+        if (self) SmartHomeHub::GetInstance().ReturnToDefaultScreen();
     }, LV_EVENT_CLICKED, this);
 
     // Grid Container - scrollable vertically

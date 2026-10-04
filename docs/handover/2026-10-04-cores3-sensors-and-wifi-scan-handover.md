@@ -53,6 +53,12 @@ Phiên làm việc tiếp nhận yêu cầu nâng cấp toàn diện các tính 
     - [`main/apps/smart_home_hub/ui/camera_preview_screen.cc`](file:///Users/tonypham/MEGA/IDF/xiaozhi-esp32/main/apps/smart_home_hub/ui/camera_preview_screen.cc): 120s (trước là 30s).
     - [`main/apps/smart_home_hub/ui/wifi_config_screen.cc`](file:///Users/tonypham/MEGA/IDF/xiaozhi-esp32/main/apps/smart_home_hub/ui/wifi_config_screen.cc): Bổ sung `esp_timer` 120s, tự động reset khi gõ phím / quét Wi-Fi.
   - Mọi thao tác chạm hoặc nhập liệu đều tự động reset timer 120s. Khi hết 120s không tương tác, hệ thống tự động gọi `SmartHomeHub::ReturnToDefaultScreen()`, chuyển về màn hình biểu cảm mắt hoạt hình.
+- [x] **Rà soát tương tác cảm ứng (chống chồng chéo sự kiện)**:
+  - Nguyên nhân bấm SCAN bị đẩy về mắt: `Application` xử lý state `idle` luôn gọi `ReturnToDefaultScreen()` (`main/application.cc`). Nay chỉ gọi khi `!SmartHomeHub::IsOverlayVisible()`.
+  - Bỏ "chạm bất kỳ đâu để thoát" ở `SensorDashboardScreen` và `SensorCardScreen` (vẫn giữ vuốt trái/phải).
+  - Thoát về mắt bằng cảm ứng: **giữ 1.5s vùng góc dưới-trái** (56x28 px, vô hình, trên `lv_layer_top`, `SmartHomeHub::CreateHomeHoldZone()`). Nút Back/Close của Wi-Fi và Dashboard cũng về thẳng màn hình mắt.
+  - Timeout 120s dùng `lv_display_get_inactive_time()` (`SmartHomeHub::InactivityRemainingUs()`): mọi lần chạm ở đâu cũng reset.
+  - Chưa kiểm thử trên phần cứng.
 - [x] **Tích hợp Điều hướng & MCP Server** ([`main/apps/smart_home_hub/smart_home_hub.cc`](file:///Users/tonypham/MEGA/IDF/xiaozhi-esp32/main/apps/smart_home_hub/smart_home_hub.cc)):
   - Hỗ trợ các lệnh chuyển màn hình: `"wifi_config"`, `"wifi_scan"`, `"scan_wifi"`, `"peripherals"`, `"ports"`.
   - Cập nhật danh sách màn hình trong `ListScreensJson()` và công cụ MCP.

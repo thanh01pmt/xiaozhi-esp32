@@ -56,6 +56,8 @@ void SmartHomeHub::Initialize(lv_display_t* lv_display) {
         lv_obj_align(toast_label_, LV_ALIGN_BOTTOM_MID, 0, -46);
         lv_obj_add_flag(toast_label_, LV_OBJ_FLAG_HIDDEN);
 
+        CreateHomeHoldZone();
+
         esp_timer_create_args_t toast_args = {
             .callback = &SmartHomeHub::OnToastTimeout,
             .arg = this,
@@ -244,26 +246,69 @@ void SmartHomeHub::HideWifiConfig() {
     wifi_config_screen_.Hide();
 }
 
+bool SmartHomeHub::IsOverlayVisible() {
+    return dashboard_screen_.IsVisible() || sensor_dashboard_screen_.IsVisible() ||
+           sensor_card_screen_.IsVisible() || camera_preview_screen_.IsVisible() ||
+           wifi_config_screen_.IsVisible();
+}
+
 void SmartHomeHub::SetEmotionEyes(EyeEmotion emotion) {
-    if (!dashboard_screen_.IsVisible() && !sensor_dashboard_screen_.IsVisible() &&
-        !sensor_card_screen_.IsVisible() && !camera_preview_screen_.IsVisible() &&
-        !wifi_config_screen_.IsVisible()) {
-        if (!emotion_eye_screen_.IsVisible()) {
-            emotion_eye_screen_.Show();
-        }
+    if (!IsOverlayVisible() && !emotion_eye_screen_.IsVisible()) {
+        emotion_eye_screen_.Show();
     }
     emotion_eye_screen_.SetEmotion(emotion);
 }
 
 void SmartHomeHub::SetEmotionEyesByName(const std::string& name) {
-    if (!dashboard_screen_.IsVisible() && !sensor_dashboard_screen_.IsVisible() &&
-        !sensor_card_screen_.IsVisible() && !camera_preview_screen_.IsVisible() &&
-        !wifi_config_screen_.IsVisible()) {
-        if (!emotion_eye_screen_.IsVisible()) {
-            emotion_eye_screen_.Show();
-        }
+    if (!IsOverlayVisible() && !emotion_eye_screen_.IsVisible()) {
+        emotion_eye_screen_.Show();
     }
     emotion_eye_screen_.SetEmotionByName(name);
+}
+
+// Invisible 56x28 hotspot in the bottom-left corner of the top layer. The only
+// way back to the eyes by touch is to HOLD it for 1.5 s, so ordinary taps on
+// any screen can never be mistaken for "go home". Bottom-left is free on every
+// screen (footer dots / list end above it) and is not a button anywhere.
+void SmartHomeHub::CreateHomeHoldZone() {
+    constexpr uint32_t kHoldMs = 1500;
+    home_zone_ = lv_obj_create(lv_layer_top());
+    lv_obj_remove_style_all(home_zone_);
+    lv_obj_set_size(home_zone_, 56, 28);
+    lv_obj_align(home_zone_, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+    lv_obj_add_flag(home_zone_, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(home_zone_, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_add_event_cb(home_zone_, [](lv_event_t* e) {
+        auto hub = static_cast<SmartHomeHub*>(lv_event_get_user_data(e));
+        if (hub == nullptr) return;
+        if (hub->home_hold_timer_ != nullptr) {
+            lv_timer_delete(hub->home_hold_timer_);
+            hub->home_hold_timer_ = nullptr;
+        }
+        hub->home_hold_timer_ = lv_timer_create([](lv_timer_t* t) {
+            auto h = static_cast<SmartHomeHub*>(lv_timer_get_user_data(t));
+            h->home_hold_timer_ = nullptr;  // one-shot, LVGL deletes it
+            // Camera Hide() joins its task, so never run it on the LVGL task.
+            Application::GetInstance().Schedule([h]() {
+                if (h->IsOverlayVisible()) {
+                    ESP_LOGI(TAG, "Home hold gesture -> eyes");
+                    h->ReturnToDefaultScreen();
+                }
+            });
+        }, kHoldMs, hub);
+        lv_timer_set_repeat_count(hub->home_hold_timer_, 1);
+    }, LV_EVENT_PRESSED, this);
+
+    auto cancel = [](lv_event_t* e) {
+        auto hub = static_cast<SmartHomeHub*>(lv_event_get_user_data(e));
+        if (hub != nullptr && hub->home_hold_timer_ != nullptr) {
+            lv_timer_delete(hub->home_hold_timer_);
+            hub->home_hold_timer_ = nullptr;
+        }
+    };
+    lv_obj_add_event_cb(home_zone_, cancel, LV_EVENT_RELEASED, this);
+    lv_obj_add_event_cb(home_zone_, cancel, LV_EVENT_PRESS_LOST, this);
 }
 
 void SmartHomeHub::OnDeferredSwitchTimeout(void* arg) {

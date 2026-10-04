@@ -60,6 +60,17 @@ public:
     void SetDefaultScreenMode(DefaultScreenMode mode);
     DefaultScreenMode GetDefaultScreenMode() const { return default_screen_mode_; }
     void ReturnToDefaultScreen();
+    // True while any non-eye screen (dashboard, sensors, camera, wifi) is shown.
+    bool IsOverlayVisible();
+
+    // Microseconds left until 120 s have passed since the last touch on the
+    // display (0 = idle long enough). Screen timeouts re-arm with this value,
+    // so any interaction, anywhere, restarts the countdown.
+    static int64_t InactivityRemainingUs() {
+        constexpr int64_t kIdleMs = 120 * 1000;
+        const int64_t idle = lv_display_get_inactive_time(nullptr);
+        return idle >= kIdleMs ? 0 : (kIdleMs - idle) * 1000;
+    }
 
     // Short confirmation on whatever screen is active, then fades out.
     void ShowToast(const std::string& text);
@@ -114,6 +125,11 @@ private:
 
     lv_obj_t* toast_label_ = nullptr;
     esp_timer_handle_t toast_timer_ = nullptr;
+
+    // Hold-to-go-home zone (bottom-left corner of every screen, on the top layer).
+    void CreateHomeHoldZone();
+    lv_obj_t* home_zone_ = nullptr;
+    lv_timer_t* home_hold_timer_ = nullptr;
 
     void LoadDevices();
     void LoadSettings();
