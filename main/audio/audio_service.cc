@@ -326,6 +326,9 @@ void AudioService::AudioInputTask() {
 void AudioService::AudioOutputTask() {
     while (true) {
         std::unique_lock<std::mutex> lock(audio_queue_mutex_);
+        if (audio_playback_queue_.empty()) {
+            playback_outputting_ = false;
+        }
         audio_queue_cv_.wait(
             lock, [this]() { return !audio_playback_queue_.empty() || service_stopped_.load(); });
         if (service_stopped_.load()) {
@@ -334,9 +337,15 @@ void AudioService::AudioOutputTask() {
 
         auto task = std::move(audio_playback_queue_.front());
         audio_playback_queue_.pop_front();
+        const bool just_started = !playback_outputting_;
+        playback_outputting_ = true;
         output_in_flight_ = true;
         audio_queue_cv_.notify_all();
         lock.unlock();
+
+        if (just_started && callbacks_.on_playback_started) {
+            callbacks_.on_playback_started();
+        }
 
         if (!codec_->output_enabled()) {
             esp_timer_stop(audio_power_timer_);

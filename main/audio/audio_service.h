@@ -86,6 +86,10 @@ struct AudioServiceCallbacks {
     std::function<void(void)> on_audio_testing_queue_full;
     // Fired when the decode/playback queues and their in-flight work are drained.
     std::function<void(void)> on_playback_drained;
+    // Fired once each time audio output starts after being idle (rising edge),
+    // i.e. the moment PCM actually reaches the codec. TTS packets carry
+    // playback_id == 0, so on_playback_progress cannot be used to detect this.
+    std::function<void(void)> on_playback_started;
     std::function<void(uint32_t playback_id, uint32_t media_position_ms)> on_playback_progress;
 };
 
@@ -192,6 +196,9 @@ private:
     FixedQueue<AudioTask, MAX_PLAYBACK_TASKS_IN_QUEUE> audio_playback_queue_;
     bool decode_in_flight_ = false;
     bool output_in_flight_ = false;
+    // Guarded by audio_queue_mutex_: true while the output task is draining a
+    // non-empty playback queue; used to fire on_playback_started once per run.
+    bool playback_outputting_ = false;
     bool playback_drained_notified_ = true;
     uint32_t playback_generation_ = 0;
     // For server AEC

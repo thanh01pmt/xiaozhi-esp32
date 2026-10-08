@@ -1,42 +1,18 @@
 #include "sensor_card_screen.h"
+#include "shh_theme.h"
 #include "../sensor_monitor.h"
 #include "application.h"
 #include <esp_log.h>
 #include <esp_lvgl_port.h>
 #include <ctime>
 #include <cstdio>
+#include <cmath>
 
 #define TAG "SH_SensorCard"
 
-// The mini-app is built for every board, but the large Montserrat faces are only
-// compiled in on boards that ask for them (see boards/m5stack/core-s3/config.json).
-// Undefined LV_FONT_*_N evaluates to 0 in #if, so this stays correct either way.
-// LV_FONT_DECLARE gives a variable in LVGL 9, hence the &: LV_FONT_DEFAULT is
-// already a pointer, so both branches end up as const lv_font_t*.
-#if LV_FONT_MONTSERRAT_28
-#define kFontBig (&lv_font_montserrat_28)
-#else
-#define kFontBig LV_FONT_DEFAULT
-#endif
-#if LV_FONT_MONTSERRAT_20
-#define kFontMid (&lv_font_montserrat_20)
-#else
-#define kFontMid LV_FONT_DEFAULT
-#endif
-
 namespace {
 
-constexpr uint32_t kBg = 0x070C10;
-constexpr uint32_t kCardBg = 0x0F1922;
-constexpr uint32_t kTrackBg = 0x1E2A33;
-constexpr uint32_t kLine = 0x2A3B47;
-constexpr uint32_t kText = 0xFFFFFF;
-constexpr uint32_t kDim = 0x7E93A3;
-constexpr uint32_t kCyan = 0x29D3FF;
-constexpr uint32_t kGreen = 0x22E06A;
-constexpr uint32_t kBlue = 0x2E9BFF;
-constexpr uint32_t kYellow = 0xFFC21A;
-constexpr uint32_t kOrange = 0xFF6B35;
+using namespace shh_ui;
 
 constexpr int kFrameX = 2;
 constexpr int kFrameY = 2;
@@ -171,6 +147,7 @@ void SensorCardScreen::Initialize(lv_display_t* display) {
 
 void SensorCardScreen::CreateUI() {
     screen_ = lv_obj_create(NULL);
+    SetScreen(screen_);
     lv_obj_remove_style_all(screen_);
     lv_obj_set_style_bg_color(screen_, lv_color_hex(kBg), 0);
     lv_obj_set_style_bg_opa(screen_, LV_OPA_COVER, 0);
@@ -205,8 +182,8 @@ void SensorCardScreen::CreateUI() {
     lv_obj_set_size(icon_box_, 34, 34);
     lv_obj_clear_flag(icon_box_, LV_OBJ_FLAG_SCROLLABLE);
 
-    title_label_ = MakeLabel(frame_, 56, 32, kFontMid, kCyan, "--");
-    value_label_ = MakeLabel(frame_, 56, 58, kFontBig, kText, "--");
+    title_label_ = MakeLabel(frame_, 56, 32, SHH_FONT_MID, kCyan, "--");
+    value_label_ = MakeLabel(frame_, 56, 58, SHH_FONT_BIG, kText, "--");
     unit_label_ = MakeLabel(frame_, 0, 72, &lv_font_montserrat_14, kDim, "");
     sub_label_ = MakeLabel(frame_, 56, 92, &lv_font_montserrat_14, kDim, "");
 
@@ -251,7 +228,7 @@ void SensorCardScreen::CreateUI() {
     wifi_scan_btn_ = lv_btn_create(frame_);
     lv_obj_set_pos(wifi_scan_btn_, 206, 136);
     lv_obj_set_size(wifi_scan_btn_, 92, 30);
-    lv_obj_set_style_bg_color(wifi_scan_btn_, lv_color_hex(0x1F2A38), 0);
+    lv_obj_set_style_bg_color(wifi_scan_btn_, lv_color_hex(kTrackBg), 0);
     lv_obj_set_style_border_width(wifi_scan_btn_, 1, 0);
     lv_obj_set_style_border_color(wifi_scan_btn_, lv_color_hex(kCyan), 0);
     lv_obj_set_style_radius(wifi_scan_btn_, 6, 0);
@@ -351,7 +328,7 @@ void SensorCardScreen::BuildIcon(SensorCardType type) {
         case SensorCardType::Peripherals: {
             lv_obj_t* sym = lv_label_create(icon_box_);
             lv_label_set_text(sym, LV_SYMBOL_USB);
-            lv_obj_set_style_text_font(sym, kFontBig, 0);
+            lv_obj_set_style_text_font(sym, SHH_FONT_BIG, 0);
             lv_obj_set_style_text_color(sym, lv_color_hex(accent), 0);
             lv_obj_align(sym, LV_ALIGN_LEFT_MID, 0, 0);
             break;
@@ -359,7 +336,7 @@ void SensorCardScreen::BuildIcon(SensorCardType type) {
         case SensorCardType::Network: {
             lv_obj_t* sym = lv_label_create(icon_box_);
             lv_label_set_text(sym, LV_SYMBOL_WIFI);
-            lv_obj_set_style_text_font(sym, kFontBig, 0);
+            lv_obj_set_style_text_font(sym, SHH_FONT_BIG, 0);
             lv_obj_set_style_text_color(sym, lv_color_hex(accent), 0);
             lv_obj_align(sym, LV_ALIGN_LEFT_MID, 0, 0);
             break;
@@ -367,7 +344,7 @@ void SensorCardScreen::BuildIcon(SensorCardType type) {
         case SensorCardType::System: {
             lv_obj_t* sym = lv_label_create(icon_box_);
             lv_label_set_text(sym, LV_SYMBOL_SETTINGS);
-            lv_obj_set_style_text_font(sym, kFontBig, 0);
+            lv_obj_set_style_text_font(sym, SHH_FONT_BIG, 0);
             lv_obj_set_style_text_color(sym, lv_color_hex(accent), 0);
             lv_obj_align(sym, LV_ALIGN_LEFT_MID, 0, 0);
             break;
@@ -439,22 +416,34 @@ void SensorCardScreen::UpdateData() {
         if (now > 1700000000) {
             struct tm tmv;
             localtime_r(&now, &tmv);
-            lv_label_set_text_fmt(clock_label_, "%02d:%02d", tmv.tm_hour, tmv.tm_min);
-            lv_label_set_text_fmt(date_label_, "%04d-%02d-%02d %s", tmv.tm_year + 1900,
-                                 tmv.tm_mon + 1, tmv.tm_mday, kWeekday[tmv.tm_wday % 7]);
+            int curmin = tmv.tm_hour * 60 + tmv.tm_min;
+            if (curmin != last_date_min_) {
+                lv_label_set_text_fmt(clock_label_, "%02d:%02d", tmv.tm_hour, tmv.tm_min);
+                lv_label_set_text_fmt(date_label_, "%04d-%02d-%02d %s", tmv.tm_year + 1900,
+                                     tmv.tm_mon + 1, tmv.tm_mday, kWeekday[tmv.tm_wday % 7]);
+                last_date_min_ = curmin;
+            }
         } else {
             lv_label_set_text(clock_label_, "--:--");
             lv_label_set_text(date_label_, "NO SYNC");
         }
-        lv_label_set_text_fmt(bat_label_, "%d%%", s.power.battery_level);
-        lv_obj_set_style_text_color(wifi_label_,
-                                    lv_color_hex(s.network.rssi_dbm > -90 ? kBlue : kDim), 0);
+        if (s.power.battery_level != last_bat_pct_) {
+            lv_label_set_text_fmt(bat_label_, "%d%%", s.power.battery_level);
+            last_bat_pct_ = s.power.battery_level;
+        }
+        {
+            // We don't track style color; set unconditionally (cheap for a single label at 10/250 Hz).
+            lv_obj_set_style_text_color(wifi_label_, lv_color_hex(s.network.rssi_dbm > -90 ? kBlue : kDim), 0);
+        }
 
         switch (current_type_) {
             case SensorCardType::Temperature: {
                 const int temp = static_cast<int>(s.power.temperature_c);
-                lv_label_set_text_fmt(value_label_, "%.1f", s.power.temperature_c);
-                lv_label_set_text(sub_label_, temp < 45 ? "Status  Normal" : "Status  Warm");
+                if (std::abs(s.power.temperature_c - last_temp_c_) > 0.15f) {
+                    lv_label_set_text_fmt(value_label_, "%.1f", s.power.temperature_c);
+                    lv_label_set_text(sub_label_, temp < 45 ? "Status  Normal" : "Status  Warm");
+                    last_temp_c_ = s.power.temperature_c;
+                }
                 PushChartSample(temp);
                 break;
             }
@@ -485,9 +474,12 @@ void SensorCardScreen::UpdateData() {
             }
             case SensorCardType::Light: {
                 if (s.light.available) {
-                    lv_label_set_text_fmt(value_label_, "%u", static_cast<unsigned int>(s.light.lux));
-                    lv_label_set_text_fmt(sub_label_, "Proximity  %u",
-                                          static_cast<unsigned int>(s.light.proximity));
+                    if (s.light.lux != last_lux_) {
+                        lv_label_set_text_fmt(value_label_, "%u", static_cast<unsigned int>(s.light.lux));
+                        lv_label_set_text_fmt(sub_label_, "Proximity  %u",
+                                              static_cast<unsigned int>(s.light.proximity));
+                        last_lux_ = static_cast<uint32_t>(s.light.lux);
+                    }
                     PushChartSample(static_cast<int>(s.light.lux));
                     int lux_pct = static_cast<int>(s.light.lux / 10.0f);
                     if (lux_pct > 100) lux_pct = 100;
@@ -568,21 +560,25 @@ void SensorCardScreen::UpdateData() {
             }
             case SensorCardType::Network: {
                 const bool up = s.network.rssi_dbm > -90;
-                lv_label_set_text(value_label_, up ? "Connected" : "Offline");
-                lv_obj_set_style_text_color(value_label_, lv_color_hex(up ? kGreen : kOrange), 0);
-                lv_label_set_text(left_column_, "SSID\n\nIP");
-                lv_label_set_text_fmt(right_column_, "%s\n\n%s", s.network.ssid.c_str(),
-                                      s.network.ip_address.c_str());
-                lv_label_set_text_fmt(sub_label_, "%d dBm   ch %d", s.network.rssi_dbm,
-                                      s.network.channel);
                 int active = s.network.rssi_dbm >= -55   ? 4
                              : s.network.rssi_dbm >= -67 ? 3
                              : s.network.rssi_dbm >= -78 ? 2
                                                          : (up ? 1 : 0);
-                for (int i = 0; i < 4; i++) {
-                    lv_obj_set_style_bg_color(wifi_bars_[i],
-                                              lv_color_hex(i < active ? kGreen : kDim), 0);
-                    lv_obj_set_style_bg_opa(wifi_bars_[i], i < active ? LV_OPA_COVER : LV_OPA_40, 0);
+                if (s.network.ssid != last_ssid_ || abs(s.network.rssi_dbm - last_rssi_) > 1) {
+                    lv_label_set_text(value_label_, up ? "Connected" : "Offline");
+                    lv_obj_set_style_text_color(value_label_, lv_color_hex(up ? kGreen : kOrange), 0);
+                    lv_label_set_text(left_column_, "SSID\n\nIP");
+                    lv_label_set_text_fmt(right_column_, "%s\n\n%s", s.network.ssid.c_str(),
+                                          s.network.ip_address.c_str());
+                    lv_label_set_text_fmt(sub_label_, "%d dBm   ch %d", s.network.rssi_dbm,
+                                          s.network.channel);
+                    for (int i = 0; i < 4; i++) {
+                        lv_obj_set_style_bg_color(wifi_bars_[i],
+                                                  lv_color_hex(i < active ? kGreen : kDim), 0);
+                        lv_obj_set_style_bg_opa(wifi_bars_[i], i < active ? LV_OPA_COVER : LV_OPA_40, 0);
+                    }
+                    last_ssid_ = s.network.ssid;
+                    last_rssi_ = s.network.rssi_dbm;
                 }
                 break;
             }
@@ -625,45 +621,61 @@ void SensorCardScreen::Show(SensorCardType type) {
     if (screen_ == nullptr) return;
     current_type_ = type;
 
-    if (lvgl_port_lock(200)) {
-        main_screen_ = lv_screen_active();
-        // Synchronous load, see DashboardScreen::Show().
-        lv_screen_load(screen_);
+    if (AcquireForeground()) {
         ApplyType(type);
-        visible_ = true;
-        lvgl_port_unlock();
+    } else {
+        return;
     }
-
+    last_date_min_ = -1;
+    last_bat_pct_ = -1;
+    last_temp_c_ = -1000.f;
+    last_lux_ = 0xffffffff;
+    last_rssi_ = -200;
+    last_ssid_.clear();
     UpdateData();
     ResetAutoReturnTimer();
 
     if (update_timer_ != nullptr) {
-        // 100 ms (10 Hz) provides smooth spirit level animation for IMU
-        // and low CPU overhead for other sensor cards.
-        esp_timer_start_periodic(update_timer_, 100 * 1000);
+        // 100 ms (10 Hz) for Motion (smooth spirit level), 250 ms for others
+        esp_timer_start_periodic(update_timer_,
+                                 (type == SensorCardType::Motion) ? 100 * 1000 : 250 * 1000);
     }
 }
 
 void SensorCardScreen::ShowRelative(int delta) {
-    if (!visible_ || screen_ == nullptr) return;
+    if (!IsVisible() || screen_ == nullptr) return;
 
     const int count = static_cast<int>(SensorCardType::kCount);
     const int next = (static_cast<int>(current_type_) + delta + count) % count;
 
-    // Deliberately not Show(): that would overwrite main_screen_ with this
-    // very screen and strand Hide() with nowhere to go back to.
+    const SensorCardType next_type = static_cast<SensorCardType>(next);
+    current_type_ = next_type;
+
+    // Deliberately not Show(): Show() would re-take the foreground and restart
+    // the update timer. A pure ApplyType() keeps the restore target intact.
     if (lvgl_port_lock(200)) {
-        ApplyType(static_cast<SensorCardType>(next));
-        visible_ = true;
+        ApplyType(next_type);
         lvgl_port_unlock();
     }
-
+    last_date_min_ = -1;
+    last_bat_pct_ = -1;
+    last_temp_c_ = -1000.f;
+    last_lux_ = 0xffffffff;
+    last_rssi_ = -200;
+    last_ssid_.clear();
     UpdateData();
     ResetAutoReturnTimer();
+
+    // Adapt timer rate based on card type
+    if (update_timer_ != nullptr) {
+        esp_timer_stop(update_timer_);
+        esp_timer_start_periodic(update_timer_,
+                                 (next_type == SensorCardType::Motion) ? 100 * 1000 : 250 * 1000);
+    }
 }
 
 void SensorCardScreen::Hide() {
-    if (!visible_ || main_screen_ == nullptr) return;
+    if (!IsVisible()) return;
 
     if (update_timer_ != nullptr) {
         esp_timer_stop(update_timer_);
@@ -672,10 +684,5 @@ void SensorCardScreen::Hide() {
         esp_timer_stop(auto_return_timer_);
     }
 
-    if (lvgl_port_lock(200)) {
-        lv_screen_load(main_screen_);
-        lvgl_port_unlock();
-    }
-    // Cleared unconditionally, see DashboardScreen::Hide().
-    visible_ = false;
+    ReleaseForeground();
 }

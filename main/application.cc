@@ -99,11 +99,35 @@ void Application::Initialize() {
     callbacks.on_playback_progress = [this](uint32_t playback_id, uint32_t media_position_ms) {
         notify_player_.OnPlaybackProgress(playback_id, media_position_ms);
     };
+#if CONFIG_ENABLE_SMART_HOME_HUB
+    callbacks.on_playback_started = [this]() {
+        // Fires when a playback run starts, i.e. the first PCM is about to
+        // reach the codec. TTS packets carry playback_id == 0, so this is the
+        // only reliable signal that audible output is beginning; start the
+        // mouth animation here so it never flaps ahead of the actual sound.
+        Schedule([this]() {
+            if (GetDeviceState() == kDeviceStateSpeaking && !speaking_audio_started_) {
+                speaking_audio_started_ = true;
+                SmartHomeHub::GetInstance().SetEmotionEyes(EyeEmotion::Speaking);
+            }
+        });
+    };
+#endif
     audio_service_.SetCallbacks(callbacks);
 
     // Add state change listeners
     state_machine_.AddStateChangeListener([this](DeviceState old_state, DeviceState new_state) {
         xEventGroupSetBits(event_group_, MAIN_EVENT_STATE_CHANGED);
+
+        // Stop speaking animation as soon as we leave the speaking state,
+        // so the animation stays in sync with whether we still consider ourselves
+        // as speaking (voice/text response in progress).
+        if (old_state == kDeviceStateSpeaking) {
+            speaking_audio_started_ = false;
+#if CONFIG_ENABLE_SMART_HOME_HUB
+            SmartHomeHub::GetInstance().SetEmotionEyes(EyeEmotion::Idle);
+#endif
+        }
     });
 
     // Start the clock timer to update the status bar
@@ -1075,7 +1099,9 @@ void Application::HandleStateChangedEvent() {
         case kDeviceStateSpeaking:
             display->SetStatus(Lang::Strings::SPEAKING);
 #if CONFIG_ENABLE_SMART_HOME_HUB
-            SmartHomeHub::GetInstance().SetEmotionEyes(EyeEmotion::Speaking);
+            // Speaking animation is started by on_playback_started, on the
+            // first PCM reaching the codec, so it runs in sync with audio
+            // playback, not ahead of it.
 #endif
 
             if (listening_mode_ != kListeningModeRealtime) {

@@ -7,8 +7,9 @@
 #include <freertos/task.h>
 #include <atomic>
 #include <string>
+#include "shh_overlay_screen.h"
 
-class CameraPreviewScreen {
+class CameraPreviewScreen : public ShhOverlayScreen {
 public:
     CameraPreviewScreen();
     ~CameraPreviewScreen();
@@ -16,7 +17,6 @@ public:
     void Initialize(lv_display_t* display);
     void Show();
     void Hide();
-    bool IsVisible() const { return visible_; }
 
     // Freeze the live feed into a still frame and caption it with the capture
     // timestamp. Safe to call when the screen is not visible (no-op).
@@ -41,14 +41,10 @@ private:
     uint32_t last_frame_signature_ = 0;
     bool has_frame_signature_ = false;
 
-    std::atomic<bool> visible_{false};
     std::atomic<bool> task_running_{false};
     std::atomic<bool> capture_in_progress_{false};
     TaskHandle_t preview_task_handle_ = nullptr;
     esp_timer_handle_t auto_exit_timer_ = nullptr;
-    // Screen that was active before this one; LVGL's screen list order is not
-    // display order, so it must be remembered explicitly to get back to XiaoZhi.
-    lv_obj_t* main_screen_ = nullptr;
 
     void CreateUI();
     void ResetAutoExitTimer();

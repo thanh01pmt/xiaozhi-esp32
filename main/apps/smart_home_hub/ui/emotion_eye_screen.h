@@ -4,6 +4,7 @@
 #include <lvgl.h>
 #include <esp_timer.h>
 #include <string>
+#include "shh_overlay_screen.h"
 
 enum class EyeEmotion {
     Idle,       // Normal open eyes with random blinking
@@ -14,7 +15,7 @@ enum class EyeEmotion {
     Sleepy      // Half-closed eyelids
 };
 
-class EmotionEyeScreen {
+class EmotionEyeScreen : public ShhOverlayScreen {
 public:
     EmotionEyeScreen();
     ~EmotionEyeScreen();
@@ -22,7 +23,6 @@ public:
     void Initialize(lv_display_t* display = nullptr);
     void Show();
     void Hide();
-    bool IsVisible() const { return is_visible_; }
 
     void SetEmotion(EyeEmotion emotion);
     void SetEmotionByName(const std::string& name);
@@ -41,10 +41,7 @@ private:
     void TriggerBlink();
     void TriggerLookAround();
 
-    bool is_visible_ = false;
-    lv_display_t* display_ = nullptr;
     lv_obj_t* eye_screen_ = nullptr;
-    lv_obj_t* main_screen_ = nullptr; // Screen to return to if needed
 
     // Eye & Face objects (Kawaii Face Style)
     lv_obj_t* left_eye_ = nullptr;

@@ -1,4 +1,5 @@
 #include "smart_home_hub.h"
+#include "ui/shh_theme.h"
 #include "mcp_tools.h"
 #include "application.h"
 #include "settings.h"
@@ -46,11 +47,11 @@ void SmartHomeHub::Initialize(lv_display_t* lv_display) {
         lv_obj_set_width(toast_label_, 280);
         lv_obj_set_style_text_align(toast_label_, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_set_style_text_font(toast_label_, &lv_font_montserrat_14, 0);
-        lv_obj_set_style_text_color(toast_label_, lv_color_hex(0xFFFFFF), 0);
-        lv_obj_set_style_bg_color(toast_label_, lv_color_hex(0x1E2A33), 0);
+        lv_obj_set_style_text_color(toast_label_, lv_color_hex(shh_ui::kText), 0);
+        lv_obj_set_style_bg_color(toast_label_, lv_color_hex(shh_ui::kTrackBg), 0);
         lv_obj_set_style_bg_opa(toast_label_, LV_OPA_COVER, 0);
         lv_obj_set_style_border_width(toast_label_, 1, 0);
-        lv_obj_set_style_border_color(toast_label_, lv_color_hex(0x29D3FF), 0);
+        lv_obj_set_style_border_color(toast_label_, lv_color_hex(shh_ui::kCyan), 0);
         lv_obj_set_style_radius(toast_label_, 6, 0);
         lv_obj_set_style_pad_all(toast_label_, 6, 0);
         lv_obj_align(toast_label_, LV_ALIGN_BOTTOM_MID, 0, -46);

@@ -1,10 +1,13 @@
 #include "emotion_eye_screen.h"
+#include "shh_theme.h"
 #include "application.h"
 #include <esp_log.h>
 #include <esp_lvgl_port.h>
 #include <esp_random.h>
 
 #define TAG "SH_EmotionEyes"
+
+using namespace shh_ui;
 
 EmotionEyeScreen::EmotionEyeScreen() = default;
 
@@ -14,10 +17,10 @@ EmotionEyeScreen::~EmotionEyeScreen() {
 
 void EmotionEyeScreen::OnBlinkTimer(void* arg) {
     auto self = static_cast<EmotionEyeScreen*>(arg);
-    if (!self || !self->is_visible_) return;
+    if (!self || !self->IsVisible()) return;
 
     Application::GetInstance().Schedule([self]() {
-        if (!self->is_visible_) return;
+        if (!self->IsVisible()) return;
         if (self->current_emotion_ == EyeEmotion::Idle) {
             uint32_t r = esp_random() % 100;
             if (r < 65) {
@@ -64,6 +67,7 @@ void EmotionEyeScreen::Initialize(lv_display_t* display) {
 
 void EmotionEyeScreen::CreateUI() {
     eye_screen_ = lv_obj_create(NULL);
+    SetScreen(eye_screen_);
     // Deep OLED/IPS Black Background
     lv_obj_set_style_bg_color(eye_screen_, lv_color_hex(0x000000), 0);
     lv_obj_set_style_bg_opa(eye_screen_, LV_OPA_COVER, 0);
@@ -74,7 +78,7 @@ void EmotionEyeScreen::CreateUI() {
     lv_obj_remove_style_all(left_eye_);
     lv_obj_set_size(left_eye_, eye_width_, eye_height_);
     lv_obj_align(left_eye_, LV_ALIGN_CENTER, -eye_spacing_ - (eye_width_ / 2), -15);
-    lv_obj_set_style_bg_color(left_eye_, lv_color_hex(0x00E5FF), 0); // Vibrant Cyan/Neon
+    lv_obj_set_style_bg_color(left_eye_, lv_color_hex(kNeonCyan), 0); // Vibrant Cyan/Neon
     lv_obj_set_style_bg_opa(left_eye_, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(left_eye_, eye_radius_, 0);
 
@@ -83,7 +87,7 @@ void EmotionEyeScreen::CreateUI() {
     lv_obj_remove_style_all(right_eye_);
     lv_obj_set_size(right_eye_, eye_width_, eye_height_);
     lv_obj_align(right_eye_, LV_ALIGN_CENTER, eye_spacing_ + (eye_width_ / 2), -15);
-    lv_obj_set_style_bg_color(right_eye_, lv_color_hex(0x00E5FF), 0);
+    lv_obj_set_style_bg_color(right_eye_, lv_color_hex(kNeonCyan), 0);
     lv_obj_set_style_bg_opa(right_eye_, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(right_eye_, eye_radius_, 0);
 
@@ -92,7 +96,7 @@ void EmotionEyeScreen::CreateUI() {
     lv_obj_remove_style_all(left_blush_);
     lv_obj_set_size(left_blush_, 26, 12);
     lv_obj_align(left_blush_, LV_ALIGN_CENTER, -eye_spacing_ - (eye_width_ / 2) - 18, 45);
-    lv_obj_set_style_bg_color(left_blush_, lv_color_hex(0xFF4081), 0);
+    lv_obj_set_style_bg_color(left_blush_, lv_color_hex(kPink), 0);
     lv_obj_set_style_bg_opa(left_blush_, LV_OPA_60, 0);
     lv_obj_set_style_radius(left_blush_, 6, 0);
 
@@ -101,7 +105,7 @@ void EmotionEyeScreen::CreateUI() {
     lv_obj_remove_style_all(right_blush_);
     lv_obj_set_size(right_blush_, 26, 12);
     lv_obj_align(right_blush_, LV_ALIGN_CENTER, eye_spacing_ + (eye_width_ / 2) + 18, 45);
-    lv_obj_set_style_bg_color(right_blush_, lv_color_hex(0xFF4081), 0);
+    lv_obj_set_style_bg_color(right_blush_, lv_color_hex(kPink), 0);
     lv_obj_set_style_bg_opa(right_blush_, LV_OPA_60, 0);
     lv_obj_set_style_radius(right_blush_, 6, 0);
 
@@ -110,7 +114,7 @@ void EmotionEyeScreen::CreateUI() {
     lv_obj_remove_style_all(mouth_);
     lv_obj_set_size(mouth_, 20, 10);
     lv_obj_align(mouth_, LV_ALIGN_CENTER, 0, 48);
-    lv_obj_set_style_bg_color(mouth_, lv_color_hex(0x00E5FF), 0);
+    lv_obj_set_style_bg_color(mouth_, lv_color_hex(kNeonCyan), 0);
     lv_obj_set_style_bg_opa(mouth_, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(mouth_, 5, 0);
 
@@ -130,8 +134,8 @@ void EmotionEyeScreen::ResetEyeGeometry() {
     lv_obj_align(right_eye_, LV_ALIGN_CENTER, eye_spacing_ + (eye_width_ / 2), -15);
     lv_obj_set_style_radius(left_eye_, eye_radius_, 0);
     lv_obj_set_style_radius(right_eye_, eye_radius_, 0);
-    lv_obj_set_style_bg_color(left_eye_, lv_color_hex(0x00E5FF), 0);
-    lv_obj_set_style_bg_color(right_eye_, lv_color_hex(0x00E5FF), 0);
+    lv_obj_set_style_bg_color(left_eye_, lv_color_hex(kNeonCyan), 0);
+    lv_obj_set_style_bg_color(right_eye_, lv_color_hex(kNeonCyan), 0);
 
     if (left_blush_) lv_obj_set_style_bg_opa(left_blush_, LV_OPA_60, 0);
     if (right_blush_) lv_obj_set_style_bg_opa(right_blush_, LV_OPA_60, 0);
@@ -139,7 +143,7 @@ void EmotionEyeScreen::ResetEyeGeometry() {
     if (mouth_) {
         lv_obj_set_size(mouth_, 20, 10);
         lv_obj_align(mouth_, LV_ALIGN_CENTER, 0, 48);
-        lv_obj_set_style_bg_color(mouth_, lv_color_hex(0x00E5FF), 0);
+        lv_obj_set_style_bg_color(mouth_, lv_color_hex(kNeonCyan), 0);
     }
 }
 
@@ -199,7 +203,7 @@ void EmotionEyeScreen::TriggerLookAround() {
 
 void EmotionEyeScreen::SetEmotion(EyeEmotion emotion) {
     current_emotion_ = emotion;
-    if (!left_eye_ || !right_eye_ || !is_visible_) return;
+    if (!left_eye_ || !right_eye_ || !IsVisible()) return;
     if (!lvgl_port_lock(150)) return;
 
     ResetEyeGeometry();
@@ -207,8 +211,8 @@ void EmotionEyeScreen::SetEmotion(EyeEmotion emotion) {
     switch (emotion) {
         case EyeEmotion::Idle:
             // Default cyan rounded rectangle
-            lv_obj_set_style_bg_color(left_eye_, lv_color_hex(0x00E5FF), 0);
-            lv_obj_set_style_bg_color(right_eye_, lv_color_hex(0x00E5FF), 0);
+            lv_obj_set_style_bg_color(left_eye_, lv_color_hex(kNeonCyan), 0);
+            lv_obj_set_style_bg_color(right_eye_, lv_color_hex(kNeonCyan), 0);
             break;
 
         case EyeEmotion::Listening:
@@ -217,14 +221,14 @@ void EmotionEyeScreen::SetEmotion(EyeEmotion emotion) {
             lv_obj_set_size(right_eye_, 85, 115);
             lv_obj_set_style_radius(left_eye_, 38, 0);
             lv_obj_set_style_radius(right_eye_, 38, 0);
-            lv_obj_set_style_bg_color(left_eye_, lv_color_hex(0x00FFAA), 0);
-            lv_obj_set_style_bg_color(right_eye_, lv_color_hex(0x00FFAA), 0);
+            lv_obj_set_style_bg_color(left_eye_, lv_color_hex(kNeonMint), 0);
+            lv_obj_set_style_bg_color(right_eye_, lv_color_hex(kNeonMint), 0);
             break;
 
         case EyeEmotion::Thinking: {
             // Amber/Orange eyes shifting left and right in thought
-            lv_obj_set_style_bg_color(left_eye_, lv_color_hex(0xFFB300), 0);
-            lv_obj_set_style_bg_color(right_eye_, lv_color_hex(0xFFB300), 0);
+            lv_obj_set_style_bg_color(left_eye_, lv_color_hex(kAmber), 0);
+            lv_obj_set_style_bg_color(right_eye_, lv_color_hex(kAmber), 0);
             lv_obj_set_size(left_eye_, 75, 75);
             lv_obj_set_size(right_eye_, 75, 75);
             lv_obj_set_style_radius(left_eye_, 25, 0);
@@ -256,8 +260,8 @@ void EmotionEyeScreen::SetEmotion(EyeEmotion emotion) {
 
         case EyeEmotion::Speaking: {
             // Animated happy talk mouth and blush
-            lv_obj_set_style_bg_color(left_eye_, lv_color_hex(0x00FF88), 0);
-            lv_obj_set_style_bg_color(right_eye_, lv_color_hex(0x00FF88), 0);
+            lv_obj_set_style_bg_color(left_eye_, lv_color_hex(kNeonGreen), 0);
+            lv_obj_set_style_bg_color(right_eye_, lv_color_hex(kNeonGreen), 0);
             lv_obj_set_size(left_eye_, 75, 55);
             lv_obj_set_size(right_eye_, 75, 55);
             lv_obj_set_style_radius(left_eye_, 25, 0);
@@ -267,7 +271,7 @@ void EmotionEyeScreen::SetEmotion(EyeEmotion emotion) {
             if (right_blush_) lv_obj_set_style_bg_opa(right_blush_, LV_OPA_90, 0);
 
             if (mouth_) {
-                lv_obj_set_style_bg_color(mouth_, lv_color_hex(0xFF4081), 0);
+                lv_obj_set_style_bg_color(mouth_, lv_color_hex(kPink), 0);
                 lv_anim_t a_mouth;
                 lv_anim_init(&a_mouth);
                 lv_anim_set_var(&a_mouth, mouth_);
@@ -285,8 +289,8 @@ void EmotionEyeScreen::SetEmotion(EyeEmotion emotion) {
 
         case EyeEmotion::Happy: {
             // Happy squint eyes / crescent curve & high blush
-            lv_obj_set_style_bg_color(left_eye_, lv_color_hex(0x00FF88), 0);
-            lv_obj_set_style_bg_color(right_eye_, lv_color_hex(0x00FF88), 0);
+            lv_obj_set_style_bg_color(left_eye_, lv_color_hex(kNeonGreen), 0);
+            lv_obj_set_style_bg_color(right_eye_, lv_color_hex(kNeonGreen), 0);
             lv_obj_set_size(left_eye_, 80, 45);
             lv_obj_set_size(right_eye_, 80, 45);
             lv_obj_set_style_radius(left_eye_, 22, 0);
@@ -297,15 +301,15 @@ void EmotionEyeScreen::SetEmotion(EyeEmotion emotion) {
 
             if (mouth_) {
                 lv_obj_set_size(mouth_, 28, 14);
-                lv_obj_set_style_bg_color(mouth_, lv_color_hex(0xFF4081), 0);
+                lv_obj_set_style_bg_color(mouth_, lv_color_hex(kPink), 0);
             }
             break;
         }
 
         case EyeEmotion::Sleepy:
             // Low height, dimmed eyes
-            lv_obj_set_style_bg_color(left_eye_, lv_color_hex(0x37474F), 0);
-            lv_obj_set_style_bg_color(right_eye_, lv_color_hex(0x37474F), 0);
+            lv_obj_set_style_bg_color(left_eye_, lv_color_hex(kSlateBlue), 0);
+            lv_obj_set_style_bg_color(right_eye_, lv_color_hex(kSlateBlue), 0);
             lv_obj_set_size(left_eye_, 65, 18);
             lv_obj_set_size(right_eye_, 65, 18);
             if (left_blush_) lv_obj_set_style_bg_opa(left_blush_, LV_OPA_20, 0);
@@ -334,29 +338,16 @@ void EmotionEyeScreen::SetEmotionByName(const std::string& name) {
 
 void EmotionEyeScreen::Show() {
     if (eye_screen_ == nullptr) return;
-    if (lvgl_port_lock(200)) {
-        lv_obj_t* cur = lv_screen_active();
-        if (cur != eye_screen_) {
-            main_screen_ = cur;
-        }
-        lv_screen_load(eye_screen_);
-        is_visible_ = true;
+    if (AcquireForeground()) {
         ResetEyeGeometry();
-        lvgl_port_unlock();
         StartIdleAnimationTimer();
         ESP_LOGI(TAG, "EmotionEyeScreen shown");
     }
 }
 
 void EmotionEyeScreen::Hide() {
-    if (!is_visible_) return;
+    if (!IsVisible()) return;
     StopIdleAnimationTimer();
-    if (lvgl_port_lock(200)) {
-        ResetEyeGeometry();
-        if (main_screen_ != nullptr) {
-            lv_screen_load(main_screen_);
-        }
-        lvgl_port_unlock();
-    }
-    is_visible_ = false;
+    ResetEyeGeometry();
+    ReleaseForeground();
 }

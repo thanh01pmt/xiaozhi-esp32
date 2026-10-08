@@ -5,8 +5,9 @@
 #include <esp_timer.h>
 #include <functional>
 #include <string>
+#include "shh_overlay_screen.h"
 
-class SensorDashboardScreen {
+class SensorDashboardScreen : public ShhOverlayScreen {
 public:
     // Opened by a tap on one of the six cards; the owner maps the id to a screen.
     using OpenCardCallback = std::function<void(const std::string& sensor_type)>;
@@ -18,7 +19,6 @@ public:
     void SetOpenCardCallback(OpenCardCallback callback) { open_card_ = std::move(callback); }
     void Show();
     void Hide();
-    bool IsVisible() const { return visible_; }
     void UpdateTelemetry();
 
 private:
@@ -27,9 +27,7 @@ private:
     static void OnUpdateTimer(void* arg);
     static void OnAutoReturnTimeout(void* arg);
 
-    lv_display_t* display_ = nullptr;
     OpenCardCallback open_card_;
-    lv_obj_t* main_screen_ = nullptr;
     lv_obj_t* screen_ = nullptr;
 
     // Header
@@ -62,9 +60,28 @@ private:
     lv_obj_t* sys_cpu_ = nullptr;
     lv_obj_t* uptime_value_ = nullptr;
 
+    // Change detection to reduce LVGL redraws
+    int last_bat_pct_{-1};
+    float last_temp_c_{-1000.0f};
+    uint32_t last_lux_{0xffffffff};
+    uint16_t last_prox_{0xffff};
+    std::string last_ssid_;
+    int last_rssi_{-200};
+    uint32_t last_sram_kb_{0xffffffff};
+    uint32_t last_psram_mb_{0xffffffff};
+    uint32_t last_cpu_mhz_{0xffffffff};
+    uint32_t last_uptime_sec_{0xffffffff};
+    uint32_t last_uptime_min_{0xffffffff};
+    int last_sram_pct_{-1};
+    int last_psram_pct_{-1};
+    int last_temp_pct_{-1};
+    int last_lux_pct_{-1};
+    bool last_motion_ok_{false};
+    bool last_light_ok_{false};
+    int last_date_min_{-1};
+
     esp_timer_handle_t update_timer_ = nullptr;
     esp_timer_handle_t auto_return_timer_ = nullptr;
-    bool visible_ = false;
 };
 
 #endif // SENSOR_DASHBOARD_SCREEN_H

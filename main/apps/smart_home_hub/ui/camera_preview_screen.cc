@@ -1,4 +1,5 @@
 #include "camera_preview_screen.h"
+#include "shh_theme.h"
 #include "board.h"
 #include "camera.h"
 #include "application.h"
@@ -10,6 +11,8 @@
 #include <cstring>
 
 #define TAG "CameraPreview"
+
+using namespace shh_ui;
 #define PREVIEW_WIDTH 320
 #define PREVIEW_HEIGHT 240
 #define FRAME_BUFFER_SIZE (PREVIEW_WIDTH * PREVIEW_HEIGHT * 2)
@@ -88,6 +91,7 @@ void CameraPreviewScreen::Initialize(lv_display_t* display) {
 
 void CameraPreviewScreen::CreateUI() {
     screen_ = lv_obj_create(NULL);
+    SetScreen(screen_);
     lv_obj_set_style_bg_color(screen_, lv_color_hex(0x000000), 0);
     lv_obj_clear_flag(screen_, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -111,7 +115,7 @@ void CameraPreviewScreen::CreateUI() {
 
     status_label_ = lv_label_create(top_bar);
     lv_label_set_text(status_label_, "LIVE PREVIEW | GC0308");
-    lv_obj_set_style_text_color(status_label_, lv_color_hex(0x00E5FF), 0);
+    lv_obj_set_style_text_color(status_label_, lv_color_hex(kCyan), 0);
     lv_obj_align(status_label_, LV_ALIGN_LEFT_MID, 8, 0);
 
     // Bottom Control Bar - also carries the capture timestamp once frozen
@@ -162,16 +166,7 @@ void CameraPreviewScreen::Show() {
     if (screen_ == nullptr) return;
     ESP_LOGI(TAG, "Show Camera Live Preview");
 
-    if (lvgl_port_lock(200)) {
-        main_screen_ = lv_screen_active();
-        if (main_screen_ == screen_) {
-            main_screen_ = lv_display_get_screen_prev(display_);
-        }
-        lv_screen_load(screen_);
-        visible_ = true;
-        lvgl_port_unlock();
-    } else {
-        ESP_LOGW(TAG, "LVGL busy, camera preview not shown");
+    if (!AcquireForeground()) {
         return;
     }
     ResetAutoExitTimer();
@@ -179,32 +174,18 @@ void CameraPreviewScreen::Show() {
 }
 
 void CameraPreviewScreen::Hide() {
-    if (!visible_) return;
+    if (!IsVisible()) return;
     ESP_LOGI(TAG, "Hide Camera Live Preview");
 
     StopLiveStream();
     if (auto_exit_timer_ != nullptr) {
         esp_timer_stop(auto_exit_timer_);
     }
-
-    if (lvgl_port_lock(200)) {
-        lv_obj_t* target = (main_screen_ != nullptr && main_screen_ != screen_)
-                               ? main_screen_
-                               : lv_display_get_screen_prev(display_);
-        if (target != nullptr && target != screen_) {
-            lv_screen_load(target);
-        }
-        lvgl_port_unlock();
-    } else {
-        ESP_LOGW(TAG, "LVGL busy, camera screen left loaded");
-    }
-    // Never leave a stale visible flag behind: a timed-out lock must not wedge
-    // every later screen switch.
-    visible_ = false;
+    ReleaseForeground();
 }
 
 void CameraPreviewScreen::StartLiveStream() {
-    if (!visible_ || task_running_ || preview_task_handle_ != nullptr) return;
+    if (!IsVisible() || task_running_ || preview_task_handle_ != nullptr) return;
     task_running_ = true;
     if (xTaskCreatePinnedToCore(&CameraPreviewScreen::StreamTask, "cam_preview_task", 4096, this, 5,
                                 &preview_task_handle_, 1) != pdPASS) {
@@ -229,12 +210,12 @@ void CameraPreviewScreen::StopLiveStream() {
 }
 
 void CameraPreviewScreen::FreezeCapturedPhoto() {
-    if (!visible_ || preview_rgb_buffer_ == nullptr) return;
+    if (!IsVisible() || preview_rgb_buffer_ == nullptr) return;
     TakeStillFrame("PHOTO | GC0308");
 }
 
 void CameraPreviewScreen::OnExternalPhotoCaptured() {
-    if (!visible_ || preview_rgb_buffer_ == nullptr) return;
+    if (!IsVisible() || preview_rgb_buffer_ == nullptr) return;
     StopLiveStream();
     TakeStillFrame("PHOTO | GC0308");
 }
@@ -259,10 +240,10 @@ void CameraPreviewScreen::TakeStillFrame(const char* caption_prefix) {
         if (status_label_ != nullptr) {
             if (grabbed) {
                 lv_label_set_text_fmt(status_label_, "%s", caption_prefix);
-                lv_obj_set_style_text_color(status_label_, lv_color_hex(0xFFB300), 0);
+                lv_obj_set_style_text_color(status_label_, lv_color_hex(kAmber), 0);
             } else {
                 lv_label_set_text(status_label_, "CAMERA UNAVAILABLE");
-                lv_obj_set_style_text_color(status_label_, lv_color_hex(0xFF5252), 0);
+                lv_obj_set_style_text_color(status_label_, lv_color_hex(kRed), 0);
             }
         }
         if (hint_label_ != nullptr) {
@@ -270,10 +251,10 @@ void CameraPreviewScreen::TakeStillFrame(const char* caption_prefix) {
                 snprintf(stamp, sizeof(stamp), "Chụp lúc %02d/%02d/%04d  %02d:%02d:%02d", tmv.tm_mday,
                          tmv.tm_mon + 1, tmv.tm_year + 1900, tmv.tm_hour, tmv.tm_min, tmv.tm_sec);
                 lv_label_set_text(hint_label_, stamp);
-                lv_obj_set_style_text_color(hint_label_, lv_color_hex(0xFFB300), 0);
+                lv_obj_set_style_text_color(hint_label_, lv_color_hex(kAmber), 0);
             } else {
                 lv_label_set_text(hint_label_, "Không lấy được khung hình từ camera");
-                lv_obj_set_style_text_color(hint_label_, lv_color_hex(0xFF5252), 0);
+                lv_obj_set_style_text_color(hint_label_, lv_color_hex(kRed), 0);
             }
         }
         if (img_obj_ != nullptr) {
@@ -310,7 +291,7 @@ void CameraPreviewScreen::StreamTask(void* arg) {
     uint32_t frame_count = 0;
     int64_t last_fps_time = esp_timer_get_time();
 
-    while (self->task_running_ && self->visible_) {
+    while (self->task_running_ && self->IsVisible()) {
         if (camera != nullptr && self->preview_rgb_buffer_ != nullptr) {
             uint16_t w = 0, h = 0;
             if (camera->CapturePreviewFrame(self->preview_rgb_buffer_, FRAME_BUFFER_SIZE, w, h)) {
@@ -333,7 +314,7 @@ void CameraPreviewScreen::StreamTask(void* arg) {
                     if (lvgl_port_lock(50)) {
                         if (self->status_label_ != nullptr) {
                             lv_label_set_text_fmt(self->status_label_, "LIVE PREVIEW | %.1f FPS", fps);
-                            lv_obj_set_style_text_color(self->status_label_, lv_color_hex(0x00E5FF), 0);
+                            lv_obj_set_style_text_color(self->status_label_, lv_color_hex(kCyan), 0);
                         }
                         lvgl_port_unlock();
                     }

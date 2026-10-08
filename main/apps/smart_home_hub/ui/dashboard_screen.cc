@@ -1,7 +1,12 @@
 #include "dashboard_screen.h"
+#include "shh_theme.h"
 #include "application.h"
 #include <esp_log.h>
 #include <esp_lvgl_port.h>
+
+namespace {
+using namespace shh_ui;
+}
 
 #define TAG "SH_Dashboard"
 
@@ -52,33 +57,34 @@ void DashboardScreen::Initialize(lv_display_t* display) {
 
 void DashboardScreen::CreateUI() {
     home_screen_ = lv_obj_create(NULL);
-    lv_obj_set_style_bg_color(home_screen_, lv_color_hex(0x070C10), 0);
+    SetScreen(home_screen_);
+    lv_obj_set_style_bg_color(home_screen_, lv_color_hex(kBg), 0);
 
     // Header container
     lv_obj_t* header_cont = lv_obj_create(home_screen_);
     lv_obj_remove_style_all(header_cont);
     lv_obj_set_size(header_cont, 320, 36);
     lv_obj_align(header_cont, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_set_style_bg_color(header_cont, lv_color_hex(0x111B23), 0);
+    lv_obj_set_style_bg_color(header_cont, lv_color_hex(kCardBg), 0);
     lv_obj_set_style_bg_opa(header_cont, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(header_cont, 1, 0);
-    lv_obj_set_style_border_color(header_cont, lv_color_hex(0x1E2A33), 0);
+    lv_obj_set_style_border_color(header_cont, lv_color_hex(kTrackBg), 0);
     lv_obj_set_style_pad_hor(header_cont, 10, 0);
     lv_obj_set_flex_flow(header_cont, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(header_cont, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
     header_label_ = lv_label_create(header_cont);
     lv_label_set_text(header_label_, LV_SYMBOL_HOME " Smart Home");
-    lv_obj_set_style_text_color(header_label_, lv_color_hex(0x29D3FF), 0);
+    lv_obj_set_style_text_color(header_label_, lv_color_hex(kCyan), 0);
     lv_obj_set_style_text_font(header_label_, &lv_font_montserrat_14, 0);
 
     lv_obj_t* close_btn = lv_button_create(header_cont);
     lv_obj_set_size(close_btn, 28, 26);
-    lv_obj_set_style_bg_color(close_btn, lv_color_hex(0x1E2A33), 0);
+    lv_obj_set_style_bg_color(close_btn, lv_color_hex(kTrackBg), 0);
     lv_obj_set_style_radius(close_btn, 4, 0);
     lv_obj_t* close_lbl = lv_label_create(close_btn);
     lv_label_set_text(close_lbl, LV_SYMBOL_CLOSE);
-    lv_obj_set_style_text_color(close_lbl, lv_color_hex(0xFF5252), 0);
+    lv_obj_set_style_text_color(close_lbl, lv_color_hex(kRed), 0);
     lv_obj_center(close_lbl);
     lv_obj_add_event_cb(close_btn, [](lv_event_t* e) {
         auto self = static_cast<DashboardScreen*>(lv_event_get_user_data(e));
@@ -107,7 +113,7 @@ void DashboardScreen::ReloadDevices(const std::vector<SmartDevice>& devices) {
     if (devices.empty()) {
         lv_obj_t* empty_lbl = lv_label_create(grid_container_);
         lv_label_set_text(empty_lbl, "Chưa tìm thấy thiết bị nào.\nHãy kiểm tra cấu hình Home Assistant!");
-        lv_obj_set_style_text_color(empty_lbl, lv_color_hex(0x7E93A3), 0);
+        lv_obj_set_style_text_color(empty_lbl, lv_color_hex(kDim), 0);
         lv_obj_set_style_text_align(empty_lbl, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_set_style_text_font(empty_lbl, &lv_font_montserrat_14, 0);
         lv_obj_center(empty_lbl);
@@ -122,11 +128,10 @@ void DashboardScreen::ReloadDevices(const std::vector<SmartDevice>& devices) {
         lv_obj_set_style_border_width(card, 1, 0);
         lv_obj_set_style_pad_all(card, 6, 0);
 
-        uint32_t bg_col = dev.state ? 0x163428 : 0x111B23;
-        uint32_t border_col = dev.state ? 0x22E06A : 0x1E2A33;
-        uint32_t accent_col = dev.state ? 0x22E06A : 0x7E93A3;
+        uint32_t border_col = dev.state ? kGreen : kTrackBg;
+        uint32_t accent_col = dev.state ? kGreen : kDim;
 
-        lv_obj_set_style_bg_color(card, lv_color_hex(bg_col), 0);
+        lv_obj_set_style_bg_color(card, lv_color_hex(dev.state ? 0x163428 : kCardBg), 0);
         lv_obj_set_style_border_color(card, lv_color_hex(border_col), 0);
 
         // Icon symbol based on device type
@@ -148,13 +153,12 @@ void DashboardScreen::ReloadDevices(const std::vector<SmartDevice>& devices) {
         lv_obj_set_style_text_font(icon_lbl, &lv_font_montserrat_14, 0);
 
         lv_obj_t* name_lbl = lv_label_create(row);
-        // Truncate long name to fit compact card
-        std::string disp_name = dev.name;
-        if (disp_name.length() > 14) {
-            disp_name = disp_name.substr(0, 12) + "..";
-        }
-        lv_label_set_text(name_lbl, (" " + disp_name).c_str());
-        lv_obj_set_style_text_color(name_lbl, lv_color_hex(0xFFFFFF), 0);
+        // LV_LABEL_LONG_DOT truncates on glyph boundaries and appends "...",
+        // so multi-byte Vietnamese names never end in a broken character.
+        lv_label_set_long_mode(name_lbl, LV_LABEL_LONG_DOT);
+        lv_obj_set_width(name_lbl, 100);
+        lv_label_set_text(name_lbl, (" " + dev.name).c_str());
+        lv_obj_set_style_text_color(name_lbl, lv_color_hex(kText), 0);
         lv_obj_set_style_text_font(name_lbl, &lv_font_montserrat_14, 0);
 
         // State indicator label
@@ -205,25 +209,17 @@ void DashboardScreen::ReloadDevices(const std::vector<SmartDevice>& devices) {
 
 void DashboardScreen::Show() {
     if (home_screen_ == nullptr) return;
-    if (lvgl_port_lock(200)) {
-        main_screen_ = lv_screen_active();
-        lv_screen_load(home_screen_);
-        is_visible_ = true;
+    if (AcquireForeground()) {
         ResetAutoReturnTimer();
-        lvgl_port_unlock();
     }
 }
 
 void DashboardScreen::Hide() {
-    if (!is_visible_ || main_screen_ == nullptr) return;
+    if (!IsVisible()) return;
     if (auto_return_timer_ != nullptr) {
         esp_timer_stop(auto_return_timer_);
     }
-    if (lvgl_port_lock(200)) {
-        lv_screen_load(main_screen_);
-        lvgl_port_unlock();
-    }
-    is_visible_ = false;
+    ReleaseForeground();
 }
 
 void DashboardScreen::ResetAutoReturnTimer() {

@@ -5,6 +5,7 @@
 #include <esp_timer.h>
 #include <string>
 #include <functional>
+#include "shh_overlay_screen.h"
 
 enum class SensorCardType {
     Temperature,
@@ -17,7 +18,7 @@ enum class SensorCardType {
     kCount
 };
 
-class SensorCardScreen {
+class SensorCardScreen : public ShhOverlayScreen {
 public:
     SensorCardScreen();
     ~SensorCardScreen();
@@ -28,7 +29,6 @@ public:
     // Move to the neighbouring card without going back to XiaoZhi, so the
     // six screens behave like one swipeable row.
     void ShowRelative(int delta);
-    bool IsVisible() const { return visible_; }
     void UpdateData();
     void SetOpenWifiConfigCallback(std::function<void()> cb) { on_open_wifi_config_ = std::move(cb); }
 
@@ -42,8 +42,6 @@ private:
     static void OnUpdateTimer(void* arg);
     static void OnAutoReturnTimeout(void* arg);
 
-    lv_display_t* display_ = nullptr;
-    lv_obj_t* main_screen_ = nullptr;
     lv_obj_t* screen_ = nullptr;
     lv_obj_t* frame_ = nullptr;
 
@@ -89,9 +87,14 @@ private:
     int32_t chart_max_v_ = 100;
 
     SensorCardType current_type_ = SensorCardType::Temperature;
+    int last_date_min_{-1};
+    int last_bat_pct_{-1};
+    float last_temp_c_{-1000.f};
+    uint32_t last_lux_{0xffffffff};
+    int last_rssi_{-200};
+    std::string last_ssid_;
     esp_timer_handle_t update_timer_ = nullptr;
     esp_timer_handle_t auto_return_timer_ = nullptr;
-    bool visible_ = false;
     std::function<void()> on_open_wifi_config_;
 };
 

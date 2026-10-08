@@ -1,45 +1,21 @@
 #include "sensor_dashboard_screen.h"
+#include "shh_theme.h"
 #include "../sensor_monitor.h"
 #include "application.h"
 #include <esp_log.h>
 #include <esp_lvgl_port.h>
 #include <ctime>
 #include <cstdio>
+#include <cmath>
 
 #define TAG "SH_SensorDash"
 
-// The mini-app is built for every board, but the large Montserrat faces are only
-// compiled in on boards that ask for them (see boards/m5stack/core-s3/config.json).
-// Undefined LV_FONT_*_N evaluates to 0 in #if, so this stays correct either way.
-#if LV_FONT_MONTSERRAT_28
-#define kFontBig (&lv_font_montserrat_28)
-#else
-#define kFontBig LV_FONT_DEFAULT
-#endif
-#if LV_FONT_MONTSERRAT_20
-#define kFontMid (&lv_font_montserrat_20)
-#else
-#define kFontMid LV_FONT_DEFAULT
-#endif
-
 // ---------------------------------------------------------------------------
-// Palette sampled from the reference "CoreS3 dashboard" look: near-black
-// canvas, dark slate cards, one neon accent per card.
+// Palette lives in shh_theme.h so every mini-app shares one set of colours.
 // ---------------------------------------------------------------------------
 namespace {
 
-constexpr uint32_t kBg = 0x070C10;
-constexpr uint32_t kCardBg = 0x111B23;
-constexpr uint32_t kTrackBg = 0x1E2A33;
-constexpr uint32_t kText = 0xFFFFFF;
-constexpr uint32_t kDim = 0x7E93A3;
-constexpr uint32_t kCyan = 0x29D3FF;
-constexpr uint32_t kGreen = 0x22E06A;
-constexpr uint32_t kBlue = 0x2E9BFF;
-constexpr uint32_t kPurple = 0xC24BFF;
-constexpr uint32_t kYellow = 0xFFC21A;
-constexpr uint32_t kOrange = 0xFF6B35;
-constexpr uint32_t kRed = 0xFF5252;
+using namespace shh_ui;
 
 constexpr int kMargin = 4;
 constexpr int kGap = 4;
@@ -120,10 +96,9 @@ SensorDashboardScreen::~SensorDashboardScreen() {
 }
 
 void SensorDashboardScreen::OnUpdateTimer(void* arg) {
-    auto self = static_cast<SensorDashboardScreen*>(arg);
-    if (self && self->IsVisible()) {
-        self->UpdateTelemetry();
-    }
+    auto self = static_cast<SensorDashboardScreen*>(arg);        if (self && self->IsVisible()) {
+            self->UpdateTelemetry();
+        }
 }
 
 #include "../smart_home_hub.h"
@@ -214,6 +189,7 @@ void SensorDashboardScreen::MakeCardTappable(lv_obj_t* card, const char* sensor_
 
 void SensorDashboardScreen::CreateUI() {
     screen_ = lv_obj_create(NULL);
+    SetScreen(screen_);
     lv_obj_remove_style_all(screen_);
     lv_obj_set_style_bg_color(screen_, lv_color_hex(kBg), 0);
     lv_obj_set_style_bg_opa(screen_, LV_OPA_COVER, 0);
@@ -225,43 +201,43 @@ void SensorDashboardScreen::CreateUI() {
     // through to the background handler that goes back.
     lv_obj_clear_flag(head, LV_OBJ_FLAG_CLICKABLE);
     MakeLabel(head, 10, 5, &lv_font_montserrat_14, kCyan, "M5STACK");
-    MakeLabel(head, 10, 18, kFontMid, kText, "CORE S3");
+    MakeLabel(head, 10, 18, SHH_FONT_MID, kText, "CORE S3");
     lv_obj_t* vline = lv_obj_create(head);
     lv_obj_remove_style_all(vline);
     lv_obj_set_pos(vline, 100, 10);
     lv_obj_set_size(vline, 1, kHeadH - 20);
-    lv_obj_set_style_bg_color(vline, lv_color_hex(0x2A3B47), 0);
+    lv_obj_set_style_bg_color(vline, lv_color_hex(kLine), 0);
     lv_obj_set_style_bg_opa(vline, LV_OPA_COVER, 0);
     date_label_ = MakeLabel(head, 106, 7, &lv_font_montserrat_14, kDim, "--/--/--");
-    clock_label_ = MakeLabel(head, 106, 22, kFontMid, kText, "--:--");
+    clock_label_ = MakeLabel(head, 106, 22, SHH_FONT_MID, kText, "--:--");
 
     // --------------------------------------------------------------- battery
     lv_obj_t* bat = MakeCard(screen_, kCol2, kRowHead, kCardW, kHeadH, kGreen);
     MakeCardTappable(bat, "battery");
     MakeLabel(bat, 8, 5, &lv_font_montserrat_14, kGreen, "BAT");
     bat_state_ = MakeRightLabel(bat, 5, kCardW - 8, &lv_font_montserrat_14, kDim, "--");
-    bat_value_ = MakeLabel(bat, 8, 21, kFontMid, kText, "--%");
+    bat_value_ = MakeLabel(bat, 8, 21, SHH_FONT_MID, kText, "--%");
     bat_bar_ = MakeBar(bat, 8, kHeadH - 10, kCardW - 16, 5, kGreen);
 
     // ------------------------------------------------------------ temperature
     lv_obj_t* temp = MakeCard(screen_, kCol0, kRowA, kCardW, kRowBH, kOrange);
     MakeCardTappable(temp, "temperature");
     MakeLabel(temp, 8, 5, &lv_font_montserrat_14, kOrange, "TEMP");
-    temp_value_ = MakeLabel(temp, 8, 20, kFontBig, kText, "--.-");
+    temp_value_ = MakeLabel(temp, 8, 20, SHH_FONT_BIG, kText, "--.-");
     MakeRightLabel(temp, 34, kCardW - 8, &lv_font_montserrat_14, kDim, "C");
     temp_bar_ = MakeBar(temp, 8, kRowBH - 26, kCardW - 16, 6, kOrange);
 
     // ------------------------------------------------------------------ IMU
     lv_obj_t* imu = MakeCard(screen_, kCol1, kRowA, kCardW, kTallH, kGreen);
     MakeCardTappable(imu, "motion");
-    MakeLabel(imu, 8, 5, kFontMid, kGreen, "IMU");
+    MakeLabel(imu, 8, 5, SHH_FONT_MID, kGreen, "IMU");
     MakeLabel(imu, 46, 9, &lv_font_montserrat_14, kDim, "ACC (g)");
     acc_value_ = MakeLabel(imu, 8, 32, &lv_font_montserrat_14, kText, "X  --.--\nY  --.--\nZ  --.--");
     lv_obj_t* hline1 = lv_obj_create(imu);
     lv_obj_remove_style_all(hline1);
     lv_obj_set_pos(hline1, 8, 86);
     lv_obj_set_size(hline1, kCardW - 16, 1);
-    lv_obj_set_style_bg_color(hline1, lv_color_hex(0x2A3B47), 0);
+    lv_obj_set_style_bg_color(hline1, lv_color_hex(kLine), 0);
     lv_obj_set_style_bg_opa(hline1, LV_OPA_COVER, 0);
     MakeLabel(imu, 8, 90, &lv_font_montserrat_14, kDim, "GYR (d/s)");
     gyr_value_ = MakeLabel(imu, 8, 108, &lv_font_montserrat_14, kText, "X  --.--\nY  --.--\nZ  --.--");
@@ -271,7 +247,7 @@ void SensorDashboardScreen::CreateUI() {
     lv_obj_t* light = MakeCard(screen_, kCol2, kRowA, kCardW, kRowBH, kYellow);
     MakeCardTappable(light, "light");
     MakeLabel(light, 8, 5, &lv_font_montserrat_14, kYellow, "LIGHT");
-    light_value_ = MakeLabel(light, 8, 20, kFontBig, kText, "--");
+    light_value_ = MakeLabel(light, 8, 20, SHH_FONT_BIG, kText, "--");
     MakeRightLabel(light, 34, kCardW - 8, &lv_font_montserrat_14, kYellow, "lux");
     light_bar_ = MakeBar(light, 8, kRowBH - 30, kCardW - 16, 6, kYellow);
     prox_label_ = MakeLabel(light, 8, kRowBH - 20, &lv_font_montserrat_14, kDim, "PROX --");
@@ -334,9 +310,13 @@ void SensorDashboardScreen::UpdateTelemetry() {
         if (now > 1700000000) {  // RTC/SNTP has actually been set
             struct tm tmv;
             localtime_r(&now, &tmv);
-            lv_label_set_text_fmt(date_label_, "%04d-%02d-%02d", tmv.tm_year + 1900, tmv.tm_mon + 1,
-                                 tmv.tm_mday);
-            lv_label_set_text_fmt(clock_label_, "%02d:%02d", tmv.tm_hour, tmv.tm_min);
+            int curmin = tmv.tm_hour * 60 + tmv.tm_min;
+            if (curmin != last_date_min_) {
+                lv_label_set_text_fmt(date_label_, "%04d-%02d-%02d", tmv.tm_year + 1900, tmv.tm_mon + 1,
+                                     tmv.tm_mday);
+                lv_label_set_text_fmt(clock_label_, "%02d:%02d", tmv.tm_hour, tmv.tm_min);
+                last_date_min_ = curmin;
+            }
         } else {
             lv_label_set_text(date_label_, "NO SYNC");
             lv_label_set_text_fmt(clock_label_, "+%02lu:%02lu", static_cast<unsigned long>(seconds / 3600),
@@ -344,28 +324,48 @@ void SensorDashboardScreen::UpdateTelemetry() {
         }
 
         // --- battery ----------------------------------------------------
-        lv_label_set_text_fmt(bat_value_, "%d%%", s.power.battery_level);
-        lv_label_set_text(bat_state_,
-                          s.power.is_charging ? "SAC" : (s.power.is_discharging ? "DIS" : "IDLE"));
-        lv_bar_set_value(bat_bar_, s.power.battery_level < 0 ? 0 : s.power.battery_level, LV_ANIM_OFF);
+        {
+            int b = s.power.battery_level;
+            if (b < 0) b = 0;
+            if (b > 100) b = 100;
+            if (b != last_bat_pct_) {
+                lv_label_set_text_fmt(bat_value_, "%d%%", s.power.battery_level);
+                lv_label_set_text(bat_state_,
+                                  s.power.is_charging ? "SAC" : (s.power.is_discharging ? "DIS" : "IDLE"));
+                lv_bar_set_value(bat_bar_, s.power.battery_level < 0 ? 0 : s.power.battery_level, LV_ANIM_OFF);
+                last_bat_pct_ = b;
+            }
+        }
 
         // --- temperature ------------------------------------------------
-        lv_label_set_text_fmt(temp_value_, "%.1f", s.power.temperature_c);
-        lv_bar_set_value(temp_bar_, temp_pct, LV_ANIM_OFF);
+        if (std::abs(s.power.temperature_c - last_temp_c_) > 0.15f || temp_pct != last_temp_pct_) {
+            lv_label_set_text_fmt(temp_value_, "%.1f", s.power.temperature_c);
+            lv_bar_set_value(temp_bar_, temp_pct, LV_ANIM_OFF);
+            last_temp_c_ = s.power.temperature_c;
+            last_temp_pct_ = temp_pct;
+        }
 
         // --- light ------------------------------------------------------
+        bool light_changed = (s.light.available != last_light_ok_);
         if (s.light.available) {
-            lv_label_set_text_fmt(light_value_, "%u", static_cast<unsigned int>(s.light.lux));
-            lv_label_set_text_fmt(prox_label_, "PROX %u", static_cast<unsigned int>(s.light.proximity));
-            lv_obj_set_style_text_color(light_value_, lv_color_hex(kText), 0);
-            lv_obj_set_style_text_color(prox_label_, lv_color_hex(kDim), 0);
+            if (light_changed || s.light.lux != last_lux_ || s.light.proximity != last_prox_ || lux_pct != last_lux_pct_) {
+                lv_label_set_text_fmt(light_value_, "%u", static_cast<unsigned int>(s.light.lux));
+                lv_label_set_text_fmt(prox_label_, "PROX %u", static_cast<unsigned int>(s.light.proximity));
+                lv_obj_set_style_text_color(light_value_, lv_color_hex(kText), 0);
+                lv_obj_set_style_text_color(prox_label_, lv_color_hex(kDim), 0);
+                last_lux_ = static_cast<uint32_t>(s.light.lux);
+                last_prox_ = s.light.proximity;
+                last_lux_pct_ = lux_pct;
+                last_light_ok_ = true;
+            }
         } else {
-            // A missing sensor used to render as "--", which is indistinguishable
-            // from a sensor that has not produced a sample yet. Say so plainly.
-            lv_label_set_text(light_value_, "ERR");
-            lv_label_set_text(prox_label_, "LTR-553 NOT FOUND");
-            lv_obj_set_style_text_color(light_value_, lv_color_hex(kRed), 0);
-            lv_obj_set_style_text_color(prox_label_, lv_color_hex(kRed), 0);
+            if (light_changed) {
+                lv_label_set_text(light_value_, "ERR");
+                lv_label_set_text(prox_label_, "LTR-553 NOT FOUND");
+                lv_obj_set_style_text_color(light_value_, lv_color_hex(kRed), 0);
+                lv_obj_set_style_text_color(prox_label_, lv_color_hex(kRed), 0);
+                last_light_ok_ = false;
+            }
         }
         lv_bar_set_value(light_bar_, lux_pct, LV_ANIM_OFF);
 
@@ -385,28 +385,53 @@ void SensorDashboardScreen::UpdateTelemetry() {
         }
 
         // --- Wi-Fi ------------------------------------------------------
-        lv_label_set_text(wifi_ssid_, s.network.ssid.c_str());
-        lv_label_set_text_fmt(wifi_rssi_, "%d dBm", s.network.rssi_dbm);
         int active = s.network.rssi_dbm >= -55   ? 4
                      : s.network.rssi_dbm >= -67 ? 3
                      : s.network.rssi_dbm >= -78 ? 2
                                                  : 1;
-        for (int i = 0; i < 4; i++) {
-            lv_obj_set_style_bg_color(wifi_bars_[i], lv_color_hex(i < active ? kGreen : kDim), 0);
-            lv_obj_set_style_bg_opa(wifi_bars_[i], i < active ? LV_OPA_COVER : LV_OPA_40, 0);
+        if (s.network.ssid != last_ssid_ || abs(s.network.rssi_dbm - last_rssi_) > 1) {
+            lv_label_set_text(wifi_ssid_, s.network.ssid.c_str());
+            lv_label_set_text_fmt(wifi_rssi_, "%d dBm", s.network.rssi_dbm);
+            for (int i = 0; i < 4; i++) {
+                lv_obj_set_style_bg_color(wifi_bars_[i], lv_color_hex(i < active ? kGreen : kDim), 0);
+                lv_obj_set_style_bg_opa(wifi_bars_[i], i < active ? LV_OPA_COVER : LV_OPA_40, 0);
+            }
+            last_ssid_ = s.network.ssid;
+            last_rssi_ = s.network.rssi_dbm;
+        } else {
+            // bars still depend on active; if rssi changed by 1, we already updated; but just in case
+            // skip heavy updates
         }
 
         // --- system -----------------------------------------------------
-        lv_label_set_text_fmt(sys_sram_, "%luK", static_cast<unsigned long>(s.system.free_sram_bytes / 1024));
-        lv_label_set_text_fmt(sys_psram_, "%luM",
-                              static_cast<unsigned long>(s.system.free_psram_bytes / (1024 * 1024)));
-        lv_label_set_text_fmt(sys_cpu_, "CPU %luMHz", static_cast<unsigned long>(s.system.cpu_freq_mhz));
-        char text[16];
-        snprintf(text, sizeof(text), "%02lu:%02lu", static_cast<unsigned long>(seconds / 3600),
-                 static_cast<unsigned long>((seconds / 60) % 60));
-        lv_label_set_text(uptime_value_, text);
-        lv_bar_set_value(sys_sram_bar_, sram_pct, LV_ANIM_OFF);
-        lv_bar_set_value(sys_psram_bar_, psram_pct, LV_ANIM_OFF);
+        {
+            uint32_t sram_kb = static_cast<uint32_t>(s.system.free_sram_bytes / 1024);
+            uint32_t psram_mb = static_cast<uint32_t>(s.system.free_psram_bytes / (1024 * 1024));
+            uint32_t cpu_mhz = static_cast<uint32_t>(s.system.cpu_freq_mhz);
+            if (sram_kb != last_sram_kb_ || psram_mb != last_psram_mb_ || cpu_mhz != last_cpu_mhz_ ||
+                sram_pct != last_sram_pct_ || psram_pct != last_psram_pct_) {
+                lv_label_set_text_fmt(sys_sram_, "%luK", static_cast<unsigned long>(sram_kb));
+                lv_label_set_text_fmt(sys_psram_, "%luM", static_cast<unsigned long>(psram_mb));
+                lv_label_set_text_fmt(sys_cpu_, "CPU %luMHz", static_cast<unsigned long>(cpu_mhz));
+                lv_bar_set_value(sys_sram_bar_, sram_pct, LV_ANIM_OFF);
+                lv_bar_set_value(sys_psram_bar_, psram_pct, LV_ANIM_OFF);
+                last_sram_kb_ = sram_kb;
+                last_psram_mb_ = psram_mb;
+                last_cpu_mhz_ = cpu_mhz;
+                last_sram_pct_ = sram_pct;
+                last_psram_pct_ = psram_pct;
+            }
+        }
+        {
+            uint32_t upmin = (seconds / 60) % 1440;
+            if (upmin != last_uptime_min_) {
+                char text[16];
+                snprintf(text, sizeof(text), "%02lu:%02lu", static_cast<unsigned long>(seconds / 3600),
+                         static_cast<unsigned long>((seconds / 60) % 60));
+                lv_label_set_text(uptime_value_, text);
+                last_uptime_min_ = upmin;
+            }
+        }
 
         lvgl_port_unlock();
     }
@@ -415,17 +440,33 @@ void SensorDashboardScreen::UpdateTelemetry() {
 void SensorDashboardScreen::Show() {
     if (screen_ == nullptr) return;
     ESP_LOGI(TAG, "Showing Sensor Dashboard screen");
-    if (lvgl_port_lock(200)) {
-        main_screen_ = lv_screen_active();
-        // Synchronous load, see DashboardScreen::Show().
-        lv_screen_load(screen_);
-        visible_ = true;
-        lvgl_port_unlock();
+    if (!AcquireForeground()) {
+        return;
     }
     UpdateTelemetry();
 
+    // Force initial update
+    last_bat_pct_ = -1;
+    last_temp_c_ = -1000.0f;
+    last_lux_ = 0xffffffff;
+    last_prox_ = 0xffff;
+    last_ssid_.clear();
+    last_rssi_ = -200;
+    last_sram_kb_ = 0xffffffff;
+    last_psram_mb_ = 0xffffffff;
+    last_cpu_mhz_ = 0xffffffff;
+    last_uptime_min_ = 0xffffffff;
+    last_sram_pct_ = -1;
+    last_psram_pct_ = -1;
+    last_temp_pct_ = -1;
+    last_lux_pct_ = -1;
+    last_motion_ok_ = false;
+    last_light_ok_ = false;
+    last_date_min_ = -1;
+    UpdateTelemetry();
+
     if (update_timer_ != nullptr) {
-        esp_timer_start_periodic(update_timer_, 250 * 1000); // 4 Hz, xem sensor_card_screen.cc
+        esp_timer_start_periodic(update_timer_, 500 * 1000); // 2 Hz (reduce redraws), xem sensor_card_screen.cc
     }
     if (auto_return_timer_ != nullptr) {
         esp_timer_stop(auto_return_timer_);
@@ -434,7 +475,7 @@ void SensorDashboardScreen::Show() {
 }
 
 void SensorDashboardScreen::Hide() {
-    if (!visible_ || main_screen_ == nullptr) return;
+    if (!IsVisible()) return;
     ESP_LOGI(TAG, "Hiding Sensor Dashboard screen");
     if (update_timer_ != nullptr) {
         esp_timer_stop(update_timer_);
@@ -442,11 +483,5 @@ void SensorDashboardScreen::Hide() {
     if (auto_return_timer_ != nullptr) {
         esp_timer_stop(auto_return_timer_);
     }
-
-    if (lvgl_port_lock(200)) {
-        lv_screen_load(main_screen_);
-        lvgl_port_unlock();
-    }
-    // Cleared unconditionally, see DashboardScreen::Hide().
-    visible_ = false;
+    ReleaseForeground();
 }

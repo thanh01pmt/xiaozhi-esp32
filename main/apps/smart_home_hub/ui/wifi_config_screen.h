@@ -6,6 +6,7 @@
 #include <esp_timer.h>
 #include <vector>
 #include <string>
+#include "shh_overlay_screen.h"
 
 struct ScannedApInfo {
     std::string ssid;
@@ -14,7 +15,7 @@ struct ScannedApInfo {
     bool is_saved = false;
 };
 
-class WifiConfigScreen {
+class WifiConfigScreen : public ShhOverlayScreen {
 public:
     WifiConfigScreen();
     ~WifiConfigScreen();
@@ -22,7 +23,6 @@ public:
     void Initialize(lv_display_t* display);
     void Show();
     void Hide();
-    bool IsVisible() const { return visible_; }
 
     void StartScan();
 
@@ -35,7 +35,6 @@ private:
 
     lv_display_t* display_ = nullptr;
     lv_obj_t* screen_ = nullptr;
-    lv_obj_t* main_screen_ = nullptr;
 
     // Header
     lv_obj_t* title_label_ = nullptr;
@@ -59,7 +58,6 @@ private:
 
     esp_timer_handle_t auto_return_timer_ = nullptr;
     std::vector<ScannedApInfo> ap_list_;
-    bool visible_ = false;
     bool scanning_ = false;
 };
 

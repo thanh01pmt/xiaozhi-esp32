@@ -1,4 +1,5 @@
 #include "wifi_config_screen.h"
+#include "shh_theme.h"
 #include "../smart_home_hub.h"
 #include <esp_lvgl_port.h>
 #include <esp_log.h>
@@ -12,15 +13,13 @@
 
 namespace {
 
-constexpr uint32_t kBg = 0x0F1115;
-constexpr uint32_t kCardBg = 0x161A20;
+using namespace shh_ui;
+
+// Derived shades (one occurrence each, kept local).
+constexpr uint32_t kListBg = 0x10141A;
+constexpr uint32_t kRowBg = 0x161C24;
+constexpr uint32_t kBtnBg = 0x28303C;
 constexpr uint32_t kModalBg = 0x1E242E;
-constexpr uint32_t kLine = 0x242A34;
-constexpr uint32_t kCyan = 0x00E5FF;
-constexpr uint32_t kGreen = 0x00E676;
-constexpr uint32_t kOrange = 0xFF9100;
-constexpr uint32_t kText = 0xE6EDF3;
-constexpr uint32_t kDim = 0x8B949E;
 
 }  // namespace
 
@@ -78,6 +77,7 @@ void WifiConfigScreen::Initialize(lv_display_t* display) {
 
 void WifiConfigScreen::CreateUI() {
     screen_ = lv_obj_create(NULL);
+    SetScreen(screen_);
     lv_obj_remove_style_all(screen_);
     lv_obj_set_style_bg_color(screen_, lv_color_hex(kBg), 0);
     lv_obj_set_style_bg_opa(screen_, LV_OPA_COVER, 0);
@@ -99,7 +99,7 @@ void WifiConfigScreen::CreateUI() {
     close_btn_ = lv_btn_create(frame);
     lv_obj_set_pos(close_btn_, 8, 8);
     lv_obj_set_size(close_btn_, 32, 26);
-    lv_obj_set_style_bg_color(close_btn_, lv_color_hex(0x28303C), 0);
+    lv_obj_set_style_bg_color(close_btn_, lv_color_hex(kBtnBg), 0);
     lv_obj_set_style_radius(close_btn_, 4, 0);
     lv_obj_t* back_lbl = lv_label_create(close_btn_);
     lv_label_set_text(back_lbl, LV_SYMBOL_LEFT);
@@ -143,7 +143,7 @@ void WifiConfigScreen::CreateUI() {
     portal_btn_ = lv_btn_create(frame);
     lv_obj_set_pos(portal_btn_, 214, 36);
     lv_obj_set_size(portal_btn_, 88, 22);
-    lv_obj_set_style_bg_color(portal_btn_, lv_color_hex(0x28303C), 0);
+    lv_obj_set_style_bg_color(portal_btn_, lv_color_hex(kBtnBg), 0);
     lv_obj_set_style_radius(portal_btn_, 3, 0);
     lv_obj_t* portal_lbl = lv_label_create(portal_btn_);
     lv_label_set_text(portal_lbl, "Web Portal");
@@ -166,7 +166,7 @@ void WifiConfigScreen::CreateUI() {
     lv_obj_set_flex_flow(list_container_, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_all(list_container_, 4, 0);
     lv_obj_set_style_pad_row(list_container_, 4, 0);
-    lv_obj_set_style_bg_color(list_container_, lv_color_hex(0x10141A), 0);
+    lv_obj_set_style_bg_color(list_container_, lv_color_hex(kListBg), 0);
     lv_obj_set_style_bg_opa(list_container_, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(list_container_, 1, 0);
     lv_obj_set_style_border_color(list_container_, lv_color_hex(kLine), 0);
@@ -198,7 +198,7 @@ void WifiConfigScreen::CreateUI() {
     lv_textarea_set_password_mode(pwd_textarea_, true);
     lv_textarea_set_one_line(pwd_textarea_, true);
     lv_textarea_set_placeholder_text(pwd_textarea_, "Password");
-    lv_obj_set_style_bg_color(pwd_textarea_, lv_color_hex(0x10141A), 0);
+    lv_obj_set_style_bg_color(pwd_textarea_, lv_color_hex(kListBg), 0);
     lv_obj_set_style_text_color(pwd_textarea_, lv_color_hex(kText), 0);
     lv_obj_set_style_border_color(pwd_textarea_, lv_color_hex(kCyan), 0);
 
@@ -225,7 +225,7 @@ void WifiConfigScreen::CreateUI() {
     lv_obj_t* cancel_btn = lv_btn_create(modal_obj_);
     lv_obj_set_pos(cancel_btn, 256, 4);
     lv_obj_set_size(cancel_btn, 28, 22);
-    lv_obj_set_style_bg_color(cancel_btn, lv_color_hex(0x323B47), 0);
+    lv_obj_set_style_bg_color(cancel_btn, lv_color_hex(kBtnBg), 0);
     lv_obj_set_style_radius(cancel_btn, 3, 0);
     lv_obj_t* cancel_lbl = lv_label_create(cancel_btn);
     lv_label_set_text(cancel_lbl, "X");
@@ -248,7 +248,7 @@ void WifiConfigScreen::CreateUI() {
     lv_btnmatrix_set_map(keyboard_, kKeyMap);
     lv_obj_set_pos(keyboard_, 6, 68);
     lv_obj_set_size(keyboard_, 284, 144);
-    lv_obj_set_style_bg_color(keyboard_, lv_color_hex(0x161C24), 0);
+    lv_obj_set_style_bg_color(keyboard_, lv_color_hex(kRowBg), 0);
     lv_obj_set_style_border_width(keyboard_, 0, 0);
     lv_obj_add_event_cb(keyboard_, [](lv_event_t* e) {
         lv_obj_t* obj = static_cast<lv_obj_t*>(lv_event_get_target(e));
@@ -306,30 +306,41 @@ void WifiConfigScreen::RefreshApList() {
     }
 
     for (const auto& ap : ap_list_) {
-        char buf[64];
-        snprintf(buf, sizeof(buf), "%-18.18s [%ddBm]", ap.ssid.c_str(), ap.rssi);
-        const char* icon = (ap.rssi >= -65) ? LV_SYMBOL_WIFI : (ap.rssi >= -80 ? LV_SYMBOL_WIFI : LV_SYMBOL_WARNING);
+        const char* icon = (ap.rssi >= -80) ? LV_SYMBOL_WIFI : LV_SYMBOL_WARNING;
 
         lv_obj_t* btn = lv_btn_create(list_container_);
         lv_obj_remove_style_all(btn);
         lv_obj_set_width(btn, 286);
         lv_obj_set_height(btn, 32);
-        lv_obj_set_style_bg_color(btn, lv_color_hex(0x161C24), 0);
+        lv_obj_set_style_bg_color(btn, lv_color_hex(kRowBg), 0);
         lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
         lv_obj_set_style_radius(btn, 4, 0);
         lv_obj_set_style_pad_hor(btn, 8, 0);
         lv_obj_set_style_pad_ver(btn, 4, 0);
+        // Press feedback (remove_style_all took the theme's pressed style).
+        lv_obj_set_style_bg_color(btn, lv_color_hex(kTrackBg), LV_STATE_PRESSED);
 
         lv_obj_t* icon_lbl = lv_label_create(btn);
         lv_label_set_text(icon_lbl, icon);
         lv_obj_align(icon_lbl, LV_ALIGN_LEFT_MID, 4, 0);
         lv_obj_set_style_text_color(icon_lbl, lv_color_hex(ap.is_saved ? kGreen : kCyan), 0);
 
-        lv_obj_t* text_lbl = lv_label_create(btn);
-        lv_label_set_text(text_lbl, buf);
-        lv_obj_set_style_text_font(text_lbl, &lv_font_montserrat_14, 0);
-        lv_obj_set_style_text_color(text_lbl, lv_color_hex(ap.is_saved ? kGreen : kText), 0);
-        lv_obj_align(text_lbl, LV_ALIGN_LEFT_MID, 26, 0);
+        // SSID and RSSI live in separate labels: montserrat is proportional,
+        // so %-18s space padding never aligned, and byte truncation could cut
+        // a multi-byte SSID character in half. LV_LABEL_LONG_DOT handles both.
+        lv_obj_t* ssid_lbl = lv_label_create(btn);
+        lv_label_set_text(ssid_lbl, ap.ssid.c_str());
+        lv_label_set_long_mode(ssid_lbl, LV_LABEL_LONG_DOT);
+        lv_obj_set_width(ssid_lbl, 200);
+        lv_obj_align(ssid_lbl, LV_ALIGN_LEFT_MID, 26, 0);
+        lv_obj_set_style_text_font(ssid_lbl, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_color(ssid_lbl, lv_color_hex(ap.is_saved ? kGreen : kText), 0);
+
+        lv_obj_t* rssi_lbl = lv_label_create(btn);
+        lv_label_set_text_fmt(rssi_lbl, "%d dBm", ap.rssi);
+        lv_obj_align(rssi_lbl, LV_ALIGN_RIGHT_MID, -4, 0);
+        lv_obj_set_style_text_font(rssi_lbl, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_color(rssi_lbl, lv_color_hex(kDim), 0);
 
         // Store SSID in user data via a heap string attached to button
         auto ssid_copy = new std::string(ap.ssid);
@@ -409,28 +420,19 @@ void WifiConfigScreen::StartScan() {
 
 void WifiConfigScreen::Show() {
     if (screen_ == nullptr) return;
-    if (lvgl_port_lock(200)) {
-        main_screen_ = lv_screen_active();
-        lv_screen_load(screen_);
-        visible_ = true;
-        HideConnectModal();
-        lvgl_port_unlock();
+    if (!AcquireForeground()) {
+        return;
     }
+    HideConnectModal();
     ResetAutoReturnTimer();
     StartScan();
 }
 
 void WifiConfigScreen::Hide() {
-    if (!visible_ || screen_ == nullptr) return;
+    if (!IsVisible() || screen_ == nullptr) return;
     if (auto_return_timer_ != nullptr) {
         esp_timer_stop(auto_return_timer_);
     }
-    if (lvgl_port_lock(200)) {
-        visible_ = false;
-        HideConnectModal();
-        if (main_screen_ != nullptr && main_screen_ != screen_) {
-            lv_screen_load(main_screen_);
-        }
-        lvgl_port_unlock();
-    }
+    HideConnectModal();
+    ReleaseForeground();
 }
