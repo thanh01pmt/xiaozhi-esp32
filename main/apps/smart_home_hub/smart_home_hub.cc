@@ -321,13 +321,19 @@ void SmartHomeHub::OnDeferredSwitchTimeout(void* arg) {
 }
 
 void SmartHomeHub::ScheduleScreenSwitch(const std::string& screen_name, uint32_t delay_ms) {
+    // A newer voice command must fully replace an older pending one: the stale
+    // timer firing between the new Schedule() and the tts "start" would execute
+    // the OLD screen and swallow the new command ("mở camera" landing on a
+    // previously requested sensors screen, or nothing at all).
+    if (deferred_switch_timer_ != nullptr) {
+        esp_timer_stop(deferred_switch_timer_);
+    }
     pending_screen_switch_ = screen_name;
     ESP_LOGI(TAG, "ScheduleScreenSwitch: '%s' scheduled with max %lu ms delay", screen_name.c_str(), delay_ms);
     // Keep or set eye emotion to Thinking while LLM processes
     SetEmotionEyes(EyeEmotion::Thinking);
 
     if (deferred_switch_timer_ != nullptr) {
-        esp_timer_stop(deferred_switch_timer_);
         esp_timer_start_once(deferred_switch_timer_, delay_ms * 1000);
     }
 }

@@ -206,6 +206,10 @@ void CameraPreviewScreen::StopLiveStream() {
         ESP_LOGW(TAG, "Preview task stuck, deleting it");
         vTaskDelete(preview_task_handle_);
         preview_task_handle_ = nullptr;
+        // ponytail: vTaskDelete leaves whatever the task held (frame mutex,
+        // esp_imgfx handles) un-released; only reachable if the capture path
+        // stalls >1s. If it ever fires in the field, rework to a clean
+        // request-queue shutdown instead of force-deleting.
     }
 }
 

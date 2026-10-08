@@ -219,18 +219,36 @@ private:
         else if (touch_point.num == 0 && was_touched) {
             was_touched = false;
             int64_t touch_duration = (esp_timer_get_time() / 1000) - touch_start_time;
-            
+
 #if CONFIG_ENABLE_SMART_HOME_HUB
-            // Giữ lâu >= 600ms: Bật/Tắt Smart Home Hub Dashboard
-            if (touch_duration >= 600) {
+            // The hub overlays put real buttons under the finger. While one is
+            // visible this raw poll must stay out of the way, or every tap on
+            // a widget would ALSO toggle the chat session and every hold on a
+            // keyboard key/slider/home zone would ALSO toggle the dashboard.
+            const bool overlay_visible = SmartHomeHub::GetInstance().IsOverlayVisible();
+
+            // Giữ lâu >= 600ms (chỉ từ màn hình mắt): Bật/Tắt Smart Home Hub Dashboard
+            if (touch_duration >= 600 && !overlay_visible) {
                 ESP_LOGI(TAG, "Long press detected (%lld ms) -> Toggle SmartHomeHub Dashboard", touch_duration);
-                SmartHomeHub::GetInstance().ToggleDashboard();
+                // Hub mutations and LVGL work belong on the main loop, not on
+                // the shared esp_timer task this poll runs on.
+                Application::GetInstance().Schedule([]() {
+                    SmartHomeHub::GetInstance().ToggleDashboard();
+                });
                 return;
             }
 #endif
 
             // 短触 (< 500ms): Bật/Tắt trạng thái Chat (chỉ khi đã khởi động xong)
             if (touch_duration < TOUCH_THRESHOLD_MS) {
+#if CONFIG_ENABLE_SMART_HOME_HUB
+                // On an overlay the tap belongs to its LVGL widgets (device
+                // toggles, camera capture, Wi-Fi keyboard...); toggling the
+                // chat session here would hijack every UI tap.
+                if (overlay_visible) {
+                    return;
+                }
+#endif
                 Application::GetInstance().Schedule([this]() {
                     auto& app = Application::GetInstance();
                     if (app.GetDeviceState() == kDeviceStateStarting) {
